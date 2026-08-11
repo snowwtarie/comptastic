@@ -1,0 +1,168 @@
+<script setup>
+import { reactive, ref, computed } from 'vue';
+import { useLedgerStore } from '../stores/ledger';
+import { eur } from '../lib/format';
+import { useIsMobile } from '../lib/useIsMobile';
+import Icon from '../components/Icon.vue';
+import ModalSheet from '../components/ModalSheet.vue';
+
+const store = useLedgerStore();
+const isMobile = useIsMobile();
+
+const showForm = ref(false);
+function blankForm() {
+  return { name: '', bank: '', type: 'Compte courant', openingBalance: '' };
+}
+const form = reactive(blankForm());
+
+const accounts = computed(() =>
+  store.accountBalances().map((a) => ({
+    ...a,
+    balanceLabel: eur(a.balance),
+    hasPending: Math.abs(a.pendingEncours) > 0.005,
+    pendingLabel: `${a.pendingEncours >= 0 ? '+' : ''}${eur(a.pendingEncours)} non pointé`,
+  }))
+);
+const totalBalance = computed(() => accounts.value.reduce((s, a) => s + a.balance, 0));
+
+function openForm() {
+  showForm.value = true;
+}
+function closeForm() {
+  showForm.value = false;
+}
+function submitForm() {
+  if (!form.name) return;
+  store.addAccount({
+    name: form.name,
+    bank: form.bank,
+    type: form.type,
+    openingBalance: Number(form.openingBalance) || 0,
+  });
+  Object.assign(form, blankForm());
+  showForm.value = false;
+}
+</script>
+
+<template>
+  <!-- Mobile -->
+  <div v-if="isMobile" class="flex-1 flex flex-col bg-slate-50">
+    <header class="px-5 pt-4 pb-3 bg-white border-b border-slate-200 flex justify-between items-center">
+      <div class="text-[19px] font-extrabold tracking-tight">Comptes</div>
+      <button type="button" class="bg-indigo-50 text-indigo-600 rounded-lg px-3 py-2 text-xs font-bold flex items-center gap-1.5 cursor-pointer" @click="openForm">
+        <Icon name="plus" :size="13" :stroke-width="2" />Ajouter
+      </button>
+    </header>
+
+    <main class="flex-1 overflow-y-auto px-4 pt-3.5 pb-6">
+      <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 mb-3.5">
+        <div class="text-xs text-slate-500 mb-1">Solde total</div>
+        <div class="text-[26px] font-extrabold tracking-tight">{{ eur(totalBalance) }}</div>
+      </div>
+
+      <div class="grid gap-2.5">
+        <div v-for="acc in accounts" :key="acc.id" class="bg-white border border-slate-200 rounded-xl shadow-sm p-3.5">
+          <div class="flex justify-between items-start gap-2 mb-2">
+            <div>
+              <div class="text-[10px] font-semibold tracking-wide uppercase text-indigo-600 mb-0.5">{{ acc.bank }}</div>
+              <div class="text-sm font-bold">{{ acc.name }}</div>
+            </div>
+            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700 whitespace-nowrap">{{ acc.type }}</span>
+          </div>
+          <div class="flex items-baseline gap-1.5 flex-wrap">
+            <div class="text-lg font-extrabold">{{ acc.balanceLabel }}</div>
+            <div v-if="acc.hasPending" class="text-[11px] text-slate-400">({{ acc.pendingLabel }})</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <ModalSheet v-if="showForm" mobile title="Nouveau compte" @close="closeForm">
+      <div class="grid gap-3 mb-3.5">
+        <input v-model="form.name" type="text" placeholder="Nom du compte" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px]" />
+        <input v-model="form.bank" type="text" placeholder="Banque" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px]" />
+        <select v-model="form.type" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px] bg-white">
+          <option value="Compte courant">Compte courant</option>
+          <option value="Épargne">Épargne</option>
+        </select>
+        <input v-model="form.openingBalance" type="number" step="0.01" placeholder="Solde initial (€)" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px]" />
+      </div>
+      <div class="flex gap-2.5">
+        <button type="button" class="flex-1 bg-indigo-600 text-white rounded-[10px] py-3.5 text-sm font-bold cursor-pointer" @click="submitForm">Ajouter</button>
+        <button type="button" class="flex-1 bg-slate-100 text-slate-600 rounded-[10px] py-3.5 text-sm font-bold cursor-pointer" @click="closeForm">Annuler</button>
+      </div>
+    </ModalSheet>
+  </div>
+
+  <!-- Desktop -->
+  <main v-else class="max-w-[1120px] w-full mx-auto px-8 pt-10 pb-14">
+    <div class="flex justify-between items-center gap-4 flex-wrap mb-2">
+      <h1 class="m-0 text-[28px] font-bold tracking-tight">Comptes</h1>
+      <button type="button" class="inline-flex items-center gap-1.5 bg-transparent border border-slate-200 rounded-lg px-3.5 py-2 text-[13px] font-semibold text-indigo-600 cursor-pointer hover:bg-slate-50" @click="openForm">
+        <Icon name="plus" :size="14" :stroke-width="2" />Ajouter un compte
+      </button>
+    </div>
+    <p class="mt-0 mb-7 text-sm text-slate-500">Soldes calculés à partir des opérations pointées, encours non pointé indiqué entre parenthèses.</p>
+
+    <div class="flex items-baseline gap-6 flex-wrap bg-white border border-slate-200 rounded-2xl shadow-sm px-7 py-6 mb-7">
+      <div>
+        <div class="text-[13px] font-semibold text-slate-500 mb-1.5">Solde total</div>
+        <div class="text-4xl font-extrabold tracking-tight leading-none">{{ eur(totalBalance) }}</div>
+      </div>
+      <div class="text-[13px] text-slate-500">sur {{ accounts.length }} comptes</div>
+    </div>
+
+    <ModalSheet v-if="showForm" title="Nouveau compte" max-width="480px" @close="closeForm">
+      <div class="grid gap-4 mb-5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Nom du compte</label>
+          <input v-model="form.name" type="text" placeholder="Ex. Compte courant" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Banque</label>
+          <input v-model="form.bank" type="text" placeholder="Ex. BNP Paribas" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg" />
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5">Type</label>
+            <select v-model="form.type" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg bg-white">
+              <option value="Compte courant">Compte courant</option>
+              <option value="Épargne">Épargne</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5">Solde initial (€)</label>
+            <input v-model="form.openingBalance" type="number" step="0.01" placeholder="0,00" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg" />
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <button type="button" class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer" @click="submitForm">
+          <Icon name="plus" :stroke-width="2" />Ajouter
+        </button>
+        <button type="button" class="inline-flex items-center gap-1.5 bg-transparent text-slate-600 border border-slate-200 rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer hover:bg-slate-50" @click="closeForm">
+          <Icon name="close" :stroke-width="2" />Annuler
+        </button>
+      </div>
+    </ModalSheet>
+
+    <section class="grid gap-4" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
+      <div v-for="acc in accounts" :key="acc.id" class="flex flex-col self-stretch gap-2.5 bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+        <div class="flex justify-between items-start gap-2">
+          <div>
+            <div class="text-[11px] font-semibold tracking-wide uppercase text-indigo-600 mb-0.5">{{ acc.bank }}</div>
+            <div class="text-base font-bold">{{ acc.name }}</div>
+          </div>
+          <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 whitespace-nowrap">{{ acc.type }}</span>
+        </div>
+        <div class="mt-auto flex flex-col gap-1.5">
+          <div class="flex items-baseline gap-2 flex-wrap">
+            <div class="text-2xl font-extrabold tracking-tight">{{ acc.balanceLabel }}</div>
+            <div v-if="acc.hasPending" class="text-[13px] text-slate-400">({{ acc.pendingLabel }})</div>
+          </div>
+          <div class="text-xs text-slate-400">{{ acc.iban }}</div>
+        </div>
+      </div>
+    </section>
+  </main>
+</template>
