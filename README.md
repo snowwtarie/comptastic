@@ -27,17 +27,22 @@ Chaque page adapte sa mise en page (navigation, densité des graphiques, formula
 ## Structure
 
 ```
-src/
-  components/   Composants partagés (navigation, icônes, modale/bottom sheet, champ éditable)
-  lib/          Formatage (devise, dates), composable de breakpoint mobile
-  router/       Déclaration des routes
-  stores/       Store Pinia des données financières (comptes, transactions, budgets...)
-  views/        Une vue par page (Connexion, Tableau de bord, Transactions, Budgets, Comptes, Dettes, Projection)
+apps/
+  web/            Application front-end Vue (voir ci-dessous)
+    src/
+      components/   Composants partagés (navigation, icônes, modale/bottom sheet, champ éditable)
+      lib/          Formatage (devise, dates), composable de breakpoint mobile
+      router/       Déclaration des routes
+      stores/       Store Pinia des données financières (comptes, transactions, budgets...)
+      views/        Une vue par page (Connexion, Tableau de bord, Transactions, Budgets, Comptes, Dettes, Projection)
 ```
+
+Le backend API (Laravel) est décrit dans [`docs/backend-spec.md`](docs/backend-spec.md).
 
 ## Démarrage
 
 ```sh
+cd apps/web
 bun install
 bun run dev
 ```
@@ -45,6 +50,7 @@ bun run dev
 ## Build de production
 
 ```sh
+cd apps/web
 bun run build
 bun run preview
 ```
