@@ -10,7 +10,7 @@ class AccountBalanceCalculator
 {
     public function balanceAt(Account $account, CarbonInterface $asOf): int
     {
-        if (! class_exists(Transaction::class)) {
+        if ($this->transactionModelMissing()) {
             return $account->opening_balance_cents;
         }
 
@@ -24,7 +24,7 @@ class AccountBalanceCalculator
 
     public function pendingEncoursAt(Account $account, CarbonInterface $asOf): int
     {
-        if (! class_exists(Transaction::class)) {
+        if ($this->transactionModelMissing()) {
             return 0;
         }
 
@@ -32,5 +32,17 @@ class AccountBalanceCalculator
             ->where('reconciled', false)
             ->whereDate('date', '<=', $asOf)
             ->sum('amount_cents');
+    }
+
+    /**
+     * TODO(Task 6): remove this guard (and this method) once the
+     * Transaction model exists. Eloquent's hasMany() resolves the
+     * related class eagerly the moment the relation is queried (not
+     * lazily on declaration), so without this check Account::transactions()
+     * throws "Class Transaction not found" until Task 6 creates it.
+     */
+    private function transactionModelMissing(): bool
+    {
+        return ! class_exists(Transaction::class);
     }
 }
