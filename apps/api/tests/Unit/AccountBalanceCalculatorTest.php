@@ -16,8 +16,6 @@ class AccountBalanceCalculatorTest extends TestCase
 
     public function test_it_computes_balance_and_pending_encours_as_of_a_date(): void
     {
-        $this->markTestSkipped('Enabled in Task 6 once the Transaction model exists.');
-
         $user = User::factory()->create();
         $account = Account::factory()->create([
             'user_id' => $user->id,
