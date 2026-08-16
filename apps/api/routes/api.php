@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AccountController;
+use App\Http\Controllers\Api\BudgetController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\DebtController;
 use App\Http\Controllers\Api\TransactionController;
@@ -25,4 +26,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/transactions', [TransactionController::class, 'store']);
     Route::patch('/transactions/{transaction}', [TransactionController::class, 'update']);
     Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy']);
+
+    Route::get('/budgets', [BudgetController::class, 'index']);
+    Route::put('/budgets/{category}', [BudgetController::class, 'update']);
 });
