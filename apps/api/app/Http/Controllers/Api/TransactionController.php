@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreTransactionRequest;
+use App\Http\Requests\UpdateTransactionRequest;
 use App\Http\Resources\TransactionResource;
 use App\Models\Transaction;
 use App\Services\TransactionRunningBalanceCalculator;
@@ -74,6 +75,20 @@ class TransactionController extends Controller
         ]));
 
         return TransactionResource::collection($created)->response()->setStatusCode(201);
+    }
+
+    public function update(UpdateTransactionRequest $request, Transaction $transaction)
+    {
+        $transaction->update($request->validated());
+
+        return new TransactionResource($transaction);
+    }
+
+    public function destroy(Transaction $transaction)
+    {
+        $transaction->delete();
+
+        return response()->noContent();
     }
 
     private function periodRange(string $period): array
