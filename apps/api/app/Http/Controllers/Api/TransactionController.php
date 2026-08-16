@@ -3,14 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreTransactionRequest;
 use App\Http\Resources\TransactionResource;
 use App\Models\Transaction;
 use App\Services\TransactionRunningBalanceCalculator;
+use App\Services\TransactionSeriesGenerator;
 use Illuminate\Http\Request;
 
 class TransactionController extends Controller
 {
-    public function __construct(private TransactionRunningBalanceCalculator $runningBalances) {}
+    public function __construct(
+        private TransactionRunningBalanceCalculator $runningBalances,
+        private TransactionSeriesGenerator $seriesGenerator,
+    ) {}
 
     public function index(Request $request)
     {
@@ -37,6 +42,38 @@ class TransactionController extends Controller
         });
 
         return TransactionResource::collection($transactions);
+    }
+
+    public function store(StoreTransactionRequest $request)
+    {
+        $data = $request->validated();
+        $user = $request->user();
+
+        $rows = match ($data['mode']) {
+            'installment' => $this->seriesGenerator->installments(
+                $data['label'], $data['amount_cents'], $data['date'],
+                $data['installment']['count'], $data['reconciled'],
+            ),
+            'recurring' => $this->seriesGenerator->recurring(
+                $data['label'], $data['amount_cents'], $data['date'],
+                $data['recurring']['count'], $data['recurring']['frequency'], $data['reconciled'],
+            ),
+            default => [[
+                'date' => $data['date'], 'label' => $data['label'], 'amount_cents' => $data['amount_cents'],
+                'reconciled' => $data['reconciled'], 'series_id' => null, 'series_kind' => null, 'series_index' => null,
+            ]],
+        };
+
+        $created = collect($rows)->map(fn (array $row) => $user->transactions()->create([
+            ...$row,
+            'account_id' => $data['account_id'],
+            'category_id' => $data['category_id'],
+            'link_type' => $data['link_type'],
+            'linked_debt_id' => $data['linked_debt_id'] ?? null,
+            'linked_savings_account_id' => $data['linked_savings_account_id'] ?? null,
+        ]));
+
+        return TransactionResource::collection($created)->response()->setStatusCode(201);
     }
 
     private function periodRange(string $period): array

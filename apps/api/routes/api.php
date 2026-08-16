@@ -22,4 +22,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/debts/{debt}', [DebtController::class, 'update']);
 
     Route::get('/transactions', [TransactionController::class, 'index']);
+    Route::post('/transactions', [TransactionController::class, 'store']);
 });
