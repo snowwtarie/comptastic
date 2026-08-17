@@ -16,7 +16,7 @@ class SavingsProjectionCalculator
         $history = [];
 
         for ($i = 3; $i >= 0; $i--) {
-            $asOf = $i === 0 ? $today : $today->copy()->subMonthsNoOverflow($i - 1)->endOfMonth();
+            $asOf = $i === 0 ? $today : $today->copy()->subMonthsNoOverflow($i)->endOfMonth();
             $history[] = [
                 'month_offset' => -$i,
                 'balance_cents' => $this->savingsBalanceAt($user, $asOf),
