@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\BudgetController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\DebtController;
+use App\Http\Controllers\Api\SavingsProjectionController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\TransactionController;
 use Illuminate\Http\Request;
@@ -33,4 +34,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/settings', [SettingController::class, 'show']);
     Route::put('/settings', [SettingController::class, 'update']);
+
+    Route::get('/savings-projection', SavingsProjectionController::class);
 });
