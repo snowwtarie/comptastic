@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\BudgetController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DebtController;
 use App\Http\Controllers\Api\SavingsProjectionController;
 use App\Http\Controllers\Api\SettingController;
@@ -36,4 +37,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/settings', [SettingController::class, 'update']);
 
     Route::get('/savings-projection', SavingsProjectionController::class);
+
+    Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
 });
