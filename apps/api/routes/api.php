@@ -11,8 +11,13 @@ use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\TransactionController;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+// These are the app's only public, unauthenticated endpoints, so they are the
+// primary credential-stuffing/brute-force surface. Laravel 11's default `api`
+// middleware group does NOT include throttling unless `->throttleApi()` is
+// called in bootstrap/app.php (which this app doesn't do), so rate limiting
+// must be applied explicitly here rather than assumed.
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:6,1');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:6,1');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);

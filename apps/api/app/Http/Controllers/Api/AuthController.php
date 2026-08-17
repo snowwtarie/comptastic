@@ -54,6 +54,10 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
+        // The auth:sanctum middleware switches the default auth guard to
+        // 'sanctum' for this request. Sanctum's RequestGuard has no logout()
+        // method, so a plain Auth::logout() throws here. Force the default
+        // guard back to 'web' before logging out — do not remove this.
         Auth::shouldUse('web');
         Auth::guard('web')->logout();
         $request->session()->invalidate();
