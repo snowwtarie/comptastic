@@ -26,8 +26,12 @@ function openNewTransaction() {
 }
 
 async function logout() {
-  await authStore.logout();
-  router.push({ name: 'login' });
+  try {
+    await authStore.logout();
+  } finally {
+    authStore.clear();
+    router.push({ name: 'login' });
+  }
 }
 </script>
 
