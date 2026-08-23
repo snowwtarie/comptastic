@@ -7,6 +7,7 @@ import BudgetsView from '../views/BudgetsView.vue';
 import ComptesView from '../views/ComptesView.vue';
 import DettesView from '../views/DettesView.vue';
 import ProjectionView from '../views/ProjectionView.vue';
+import { useAuthStore } from '../stores/auth';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -27,6 +28,20 @@ const router = createRouter({
     },
     { path: '/:pathMatch(.*)*', redirect: '/login' },
   ],
+});
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore();
+  if (auth.status === 'idle') {
+    await auth.boot();
+  }
+  if (to.name !== 'login' && !auth.user) {
+    return { name: 'login' };
+  }
+  if (to.name === 'login' && auth.user) {
+    return { name: 'dashboard' };
+  }
+  return true;
 });
 
 export default router;
