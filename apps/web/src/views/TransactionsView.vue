@@ -1,39 +1,72 @@
 <script setup>
-import { reactive, ref, computed, watch } from 'vue';
+import { reactive, ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { useLedgerStore } from '../stores/ledger';
-import { eur, fmtDateLabel, addMonthsISO, addStepISO, periodRange, TODAY_ISO } from '../lib/format';
+import { useTransactionsStore } from '../stores/transactions';
+import { useAccountsStore } from '../stores/accounts';
+import { useCategoriesStore } from '../stores/categories';
+import { useDebtsStore } from '../stores/debts';
+import { eur, fmtDateLabel, addMonthsISO, addStepISO, TODAY_ISO } from '../lib/format';
 import { useIsMobile } from '../lib/useIsMobile';
 import Icon from '../components/Icon.vue';
 import ModalSheet from '../components/ModalSheet.vue';
+import { ApiError } from '../lib/api';
 
-const store = useLedgerStore();
+const transactionsStore = useTransactionsStore();
+const accountsStore = useAccountsStore();
+const categoriesStore = useCategoriesStore();
+const debtsStore = useDebtsStore();
 const route = useRoute();
 const isMobile = useIsMobile();
 
 const period = ref('current');
 const accountFilter = ref('all');
 const showForm = ref(false);
+const formError = ref('');
+const submitting = ref(false);
+const loadError = ref('');
+const listError = ref('');
+
+async function loadTransactions() {
+  try {
+    await transactionsStore.fetch({
+      period: period.value,
+      accountId: accountFilter.value === 'all' ? null : accountFilter.value,
+    });
+  } catch {
+    loadError.value = 'Impossible de charger les transactions.';
+  }
+}
+
+onMounted(async () => {
+  try {
+    await Promise.all([categoriesStore.fetch(), accountsStore.fetch(), debtsStore.fetch(), loadTransactions()]);
+    if (form.category_id === null) form.category_id = categoriesStore.expense[0]?.id ?? null;
+    if (form.account_id === null) form.account_id = accountsStore.items[0]?.id ?? null;
+    if (form.linkedDebtId === null) form.linkedDebtId = debtsStore.items[0]?.id ?? null;
+    if (form.savingsAccountId === null) form.savingsAccountId = accountsStore.savings[0]?.id ?? null;
+  } catch {
+    loadError.value = 'Impossible de charger les transactions.';
+  }
+});
+watch([period, accountFilter], loadTransactions);
 
 function blankForm() {
   return {
     label: '',
     amount: '',
     type: 'expense',
-    category: store.categories[1] || store.categories[0],
-    account: store.accountNames[0],
+    category_id: categoriesStore.expense[0]?.id ?? null,
+    account_id: accountsStore.items[0]?.id ?? null,
     date: TODAY_ISO,
     reconciled: false,
     installment: false,
     installmentCount: 4,
-    installmentDates: [],
     recurring: false,
     recurringFrequency: 'monthly',
     recurringCount: 12,
-    recurringDates: [],
     linkType: 'none',
-    linkedDebt: store.debtNames[0] || '',
-    savingsAccount: store.savingsAccountNames[0] || '',
+    linkedDebtId: debtsStore.items[0]?.id ?? null,
+    savingsAccountId: accountsStore.savings[0]?.id ?? null,
   };
 }
 const form = reactive(blankForm());
@@ -45,146 +78,95 @@ watch(
   }
 );
 
-function ensureInstallmentDates() {
-  const count = Number(form.installmentCount);
-  const dates = [];
-  for (let i = 0; i < count; i++) dates.push(addMonthsISO(form.date, i));
-  return dates;
-}
-function ensureRecurringDates() {
-  const count = Number(form.recurringCount);
-  const dates = [];
-  for (let i = 0; i < count; i++) dates.push(addStepISO(form.date, form.recurringFrequency, i));
-  return dates;
-}
-
-watch([() => form.installmentCount, () => form.date], () => {
-  if (form.installment) form.installmentDates = ensureInstallmentDates();
-});
-watch([() => form.recurringCount, () => form.recurringFrequency, () => form.date], () => {
-  if (form.recurring) form.recurringDates = ensureRecurringDates();
-});
-
-function toggleInstallment(checked) {
-  form.installment = checked;
-  if (checked) {
-    form.recurring = false;
-    form.installmentDates = ensureInstallmentDates();
-  }
-}
-function toggleRecurring(checked) {
-  form.recurring = checked;
-  if (checked) {
-    form.installment = false;
-    form.recurringDates = ensureRecurringDates();
-  }
-}
-
 const installmentRows = computed(() => {
   const total = Number(form.amount) || 0;
   const count = Number(form.installmentCount) || 1;
   const per = total / count;
-  const dates = form.installmentDates.length === count ? form.installmentDates : ensureInstallmentDates();
+  const dates = [];
+  for (let i = 0; i < count; i++) dates.push(addMonthsISO(form.date, i));
   return dates.map((d, i) => ({ index: i, indexLabel: `${i + 1}/${count}`, date: d, amountLabel: eur(per) }));
 });
 const recurringRows = computed(() => {
   const total = Number(form.amount) || 0;
   const count = Number(form.recurringCount) || 1;
-  const dates = form.recurringDates.length === count ? form.recurringDates : ensureRecurringDates();
+  const dates = [];
+  for (let i = 0; i < count; i++) dates.push(addStepISO(form.date, form.recurringFrequency, i));
   return dates.map((d, i) => ({ index: i, indexLabel: `#${i + 1}`, date: d, amountLabel: eur(total) }));
 });
 
-const runningBalances = computed(() => {
-  const byId = {};
-  for (const acc of store.accounts) {
-    const accTxns = store.transactions
-      .filter((t) => t.account === acc.name)
-      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id));
-    let running = acc.openingBalance;
-    for (const t of accTxns) {
-      running += t.amount;
-      byId[t.id] = running;
-    }
-  }
-  return byId;
-});
+function toggleInstallment(checked) {
+  form.installment = checked;
+  if (checked) form.recurring = false;
+}
+function toggleRecurring(checked) {
+  form.recurring = checked;
+  if (checked) form.installment = false;
+}
 
-const transactions = computed(() => {
-  const { start, end } = periodRange(period.value);
-  const balances = runningBalances.value;
-  return store.transactions
-    .filter((t) => t.date >= start && t.date <= end)
-    .filter((t) => accountFilter.value === 'all' || t.account === accountFilter.value)
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id))
-    .map((t) => ({
-      ...t,
-      dateLabel: fmtDateLabel(t.date, { short: isMobile.value }),
-      amountLabel: `${t.amount >= 0 ? '+' : ''}${eur(t.amount)}`,
-      amountColor: t.amount >= 0 ? 'text-emerald-700' : 'text-slate-900',
-      runningBalanceLabel: balances[t.id] !== undefined ? eur(balances[t.id]) : '—',
-      hasLink: t.linkType === 'debt' || t.linkType === 'savings',
-      linkLabel: t.linkType === 'debt' ? `Dette · ${t.linkedDebt}` : t.linkType === 'savings' ? 'Épargne' : '',
-      linkTitle: t.linkType === 'savings' ? `Vers ${t.savingsAccount}` : '',
-    }));
-});
+const transactions = computed(() =>
+  transactionsStore.items.map((t) => ({
+    ...t,
+    categoryName: categoriesStore.byId[t.category_id]?.name ?? '—',
+    accountName: accountsStore.byId[t.account_id]?.name ?? '—',
+    dateLabel: fmtDateLabel(t.date, { short: isMobile.value }),
+    amountLabel: `${t.amount >= 0 ? '+' : ''}${eur(t.amount)}`,
+    amountColor: t.amount >= 0 ? 'text-emerald-700' : 'text-slate-900',
+    runningBalanceLabel: t.running_balance !== null && t.running_balance !== undefined ? eur(t.running_balance) : '—',
+    hasLink: t.link_type === 'debt' || t.link_type === 'savings',
+    linkLabel: t.link_type === 'debt' ? `Dette · ${debtsStore.byId[t.linked_debt_id]?.name ?? ''}` : t.link_type === 'savings' ? 'Épargne' : '',
+    linkTitle: t.link_type === 'savings' ? `Vers ${accountsStore.byId[t.linked_savings_account_id]?.name ?? ''}` : '',
+  }))
+);
 
 function openForm() {
+  formError.value = '';
   showForm.value = true;
 }
 function closeForm() {
   showForm.value = false;
 }
 
-function submitForm() {
+async function submitForm() {
   const amt = Number(form.amount) || 0;
   if (!form.label || !amt) return;
-  const signedTotal = form.type === 'expense' ? -Math.abs(amt) : Math.abs(amt);
-  let newOnes;
-  if (form.installment) {
-    const n = Number(form.installmentCount);
-    const per = signedTotal / n;
-    const ds = form.installmentDates.length === n ? form.installmentDates : ensureInstallmentDates();
-    newOnes = ds.map((d, i) => ({
-      date: d,
-      label: `${form.label} (${i + 1}/${n})`,
-      category: form.category,
-      account: form.account,
-      amount: per,
-      reconciled: form.reconciled,
-      linkType: form.linkType,
-      linkedDebt: form.linkedDebt,
-      savingsAccount: form.savingsAccount,
-    }));
-  } else if (form.recurring) {
-    const n = Number(form.recurringCount);
-    const ds = form.recurringDates.length === n ? form.recurringDates : ensureRecurringDates();
-    newOnes = ds.map((d, i) => ({
-      date: d,
-      label: form.label,
-      category: form.category,
-      account: form.account,
-      amount: signedTotal,
-      reconciled: i === 0 ? form.reconciled : false,
-      linkType: form.linkType,
-      linkedDebt: form.linkedDebt,
-      savingsAccount: form.savingsAccount,
-    }));
-  } else {
-    newOnes = [{
-      date: form.date,
-      label: form.label,
-      category: form.category,
-      account: form.account,
-      amount: signedTotal,
-      reconciled: form.reconciled,
-      linkType: form.linkType,
-      linkedDebt: form.linkedDebt,
-      savingsAccount: form.savingsAccount,
-    }];
+
+  const payload = {
+    label: form.label,
+    amount: Math.abs(amt),
+    type: form.type,
+    category_id: form.category_id,
+    account_id: form.account_id,
+    date: form.date,
+    reconciled: form.reconciled,
+    link_type: form.linkType,
+    linked_debt_id: form.linkType === 'debt' ? form.linkedDebtId : null,
+    linked_savings_account_id: form.linkType === 'savings' ? form.savingsAccountId : null,
+    mode: form.installment ? 'installment' : form.recurring ? 'recurring' : 'simple',
+  };
+  if (form.installment) payload.installment = { count: Number(form.installmentCount) };
+  if (form.recurring) payload.recurring = { count: Number(form.recurringCount), frequency: form.recurringFrequency };
+
+  formError.value = '';
+  submitting.value = true;
+  try {
+    await transactionsStore.create(payload);
+    await loadTransactions();
+    Object.assign(form, blankForm());
+    showForm.value = false;
+  } catch (e) {
+    formError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+  } finally {
+    submitting.value = false;
   }
-  store.addTransactions(newOnes);
-  Object.assign(form, blankForm());
-  showForm.value = false;
+}
+
+async function toggleReconciled(id) {
+  listError.value = '';
+  try {
+    await transactionsStore.toggleReconciled(id);
+  } catch {
+    listError.value = 'Impossible de mettre à jour la transaction.';
+  }
 }
 </script>
 
@@ -196,7 +178,7 @@ function submitForm() {
       <div class="flex gap-2">
         <select v-model="accountFilter" class="flex-1 text-xs font-semibold text-slate-700 bg-slate-100 border-none rounded-lg px-2.5 py-2">
           <option value="all">Tous les comptes</option>
-          <option v-for="a in store.accountNames" :key="a" :value="a">{{ a }}</option>
+          <option v-for="a in accountsStore.items" :key="a.id" :value="a.id">{{ a.name }}</option>
         </select>
         <select v-model="period" class="flex-1 text-xs font-semibold text-indigo-600 bg-indigo-50 border-none rounded-lg px-2.5 py-2">
           <option value="current">Ce mois</option>
@@ -207,13 +189,16 @@ function submitForm() {
     </header>
 
     <main class="flex-1 overflow-y-auto px-4 pt-3.5 pb-24">
+      <div v-if="loadError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ loadError }}</div>
+      <div v-if="listError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ listError }}</div>
+
       <div class="text-xs text-slate-400 mb-2.5">{{ transactions.length }} transactions</div>
       <div class="grid gap-2.5">
         <div v-for="t in transactions" :key="t.id" class="bg-white border border-slate-200 rounded-xl shadow-sm p-3.5">
           <div class="flex justify-between items-start gap-2.5 mb-2">
             <div class="flex-1 min-w-0">
               <div class="text-sm font-bold mb-0.5">{{ t.label }}</div>
-              <div class="text-[11px] text-slate-400">{{ t.dateLabel }} · {{ t.account }}</div>
+              <div class="text-[11px] text-slate-400">{{ t.dateLabel }} · {{ t.accountName }}</div>
             </div>
             <div class="text-right shrink-0">
               <div class="text-[15px] font-extrabold" :class="t.amountColor">{{ t.amountLabel }}</div>
@@ -221,14 +206,14 @@ function submitForm() {
           </div>
           <div class="flex justify-between items-center">
             <div class="flex gap-1.5 flex-wrap">
-              <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700">{{ t.category }}</span>
+              <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700">{{ t.categoryName }}</span>
               <span v-if="t.hasLink" :title="t.linkTitle" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-yellow-100 text-yellow-800">{{ t.linkLabel }}</span>
             </div>
             <button
               type="button"
               class="w-6 h-6 rounded-[7px] border-[1.5px] text-white text-[13px] font-bold flex items-center justify-center cursor-pointer"
               :class="t.reconciled ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300 bg-white'"
-              @click="store.toggleReconciled(t.id)"
+              @click="toggleReconciled(t.id)"
             >{{ t.reconciled ? '✓' : '' }}</button>
           </div>
         </div>
@@ -243,11 +228,11 @@ function submitForm() {
           <button type="button" class="flex-1 py-2.5 text-[13px] font-semibold cursor-pointer" :class="form.type === 'expense' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600'" @click="form.type = 'expense'">Dépense</button>
           <button type="button" class="flex-1 py-2.5 text-[13px] font-semibold cursor-pointer" :class="form.type === 'income' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600'" @click="form.type = 'income'">Recette</button>
         </div>
-        <select v-model="form.category" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px] bg-white">
-          <option v-for="c in store.categories" :key="c" :value="c">{{ c }}</option>
+        <select v-model="form.category_id" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px] bg-white">
+          <option v-for="c in categoriesStore.items" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
-        <select v-model="form.account" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px] bg-white">
-          <option v-for="a in store.accountNames" :key="a" :value="a">{{ a }}</option>
+        <select v-model="form.account_id" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px] bg-white">
+          <option v-for="a in accountsStore.items" :key="a.id" :value="a.id">{{ a.name }}</option>
         </select>
         <input v-model="form.date" type="date" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px]" />
         <label class="flex items-center gap-2 text-[13px] text-slate-700">
@@ -262,11 +247,11 @@ function submitForm() {
             <option value="savings">Épargne</option>
           </select>
         </div>
-        <select v-if="form.linkType === 'debt'" v-model="form.linkedDebt" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px] bg-white">
-          <option v-for="d in store.debtNames" :key="d" :value="d">{{ d }}</option>
+        <select v-if="form.linkType === 'debt'" v-model="form.linkedDebtId" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px] bg-white">
+          <option v-for="d in debtsStore.items" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
-        <select v-if="form.linkType === 'savings'" v-model="form.savingsAccount" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px] bg-white">
-          <option v-for="s in store.savingsAccountNames" :key="s" :value="s">{{ s }}</option>
+        <select v-if="form.linkType === 'savings'" v-model="form.savingsAccountId" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px] bg-white">
+          <option v-for="s in accountsStore.savings" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
 
         <label class="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
@@ -287,7 +272,7 @@ function submitForm() {
           <div class="grid gap-2">
             <div v-for="row in installmentRows" :key="row.index" class="flex items-center gap-2.5">
               <span class="w-[54px] text-[11px] text-slate-500 font-semibold">{{ row.indexLabel }}</span>
-              <input type="date" v-model="form.installmentDates[row.index]" class="flex-1 text-[12px] px-2.5 py-1.5 border border-slate-200 rounded-[7px]" />
+              <input type="date" :value="row.date" disabled class="flex-1 text-[12px] px-2.5 py-1.5 border border-slate-200 rounded-[7px] bg-slate-100 text-slate-500" />
               <span class="w-20 text-right text-[12px] font-semibold">{{ row.amountLabel }}</span>
             </div>
           </div>
@@ -314,14 +299,17 @@ function submitForm() {
           <div class="grid gap-2 max-h-[180px] overflow-y-auto">
             <div v-for="row in recurringRows" :key="row.index" class="flex items-center gap-2.5">
               <span class="w-[54px] text-[11px] text-slate-500 font-semibold">{{ row.indexLabel }}</span>
-              <input type="date" v-model="form.recurringDates[row.index]" class="flex-1 text-[12px] px-2.5 py-1.5 border border-slate-200 rounded-[7px]" />
+              <input type="date" :value="row.date" disabled class="flex-1 text-[12px] px-2.5 py-1.5 border border-slate-200 rounded-[7px] bg-slate-100 text-slate-500" />
               <span class="w-20 text-right text-[12px] font-semibold">{{ row.amountLabel }}</span>
             </div>
           </div>
         </div>
       </div>
+      <div v-if="formError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">
+        {{ formError }}
+      </div>
       <div class="flex gap-2.5">
-        <button type="button" class="flex-1 bg-indigo-600 text-white rounded-[10px] py-3.5 text-sm font-bold cursor-pointer" @click="submitForm">Ajouter</button>
+        <button type="button" :disabled="submitting" class="flex-1 bg-indigo-600 text-white rounded-[10px] py-3.5 text-sm font-bold cursor-pointer disabled:opacity-60" @click="submitForm">Ajouter</button>
         <button type="button" class="flex-1 bg-slate-100 text-slate-600 rounded-[10px] py-3.5 text-sm font-bold cursor-pointer" @click="closeForm">Annuler</button>
       </div>
     </ModalSheet>
@@ -335,7 +323,7 @@ function submitForm() {
         <div class="text-[13px] text-slate-500">{{ transactions.length }} transactions</div>
         <select v-model="accountFilter" class="min-w-[220px] bg-white text-slate-900 text-sm font-medium px-3.5 py-2.5 border border-slate-200 rounded-lg shadow-sm">
           <option value="all">Tous les comptes</option>
-          <option v-for="a in store.accountNames" :key="a" :value="a">{{ a }}</option>
+          <option v-for="a in accountsStore.items" :key="a.id" :value="a.id">{{ a.name }}</option>
         </select>
         <select v-model="period" class="min-w-[200px] bg-white text-slate-900 text-sm font-medium px-3.5 py-2.5 border border-slate-200 rounded-lg shadow-sm">
           <option value="current">Ce mois</option>
@@ -348,6 +336,9 @@ function submitForm() {
         </button>
       </div>
     </div>
+
+    <div v-if="loadError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ loadError }}</div>
+    <div v-if="listError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ listError }}</div>
 
     <ModalSheet v-if="showForm" title="Nouvelle transaction" max-width="640px" @close="closeForm">
       <div class="grid grid-cols-[2fr_1fr] gap-4 mb-4">
@@ -371,14 +362,14 @@ function submitForm() {
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1.5">Catégorie</label>
-          <select v-model="form.category" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg bg-white">
-            <option v-for="c in store.categories" :key="c" :value="c">{{ c }}</option>
+          <select v-model="form.category_id" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg bg-white">
+            <option v-for="c in categoriesStore.items" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1.5">Compte</label>
-          <select v-model="form.account" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg bg-white">
-            <option v-for="a in store.accountNames" :key="a" :value="a">{{ a }}</option>
+          <select v-model="form.account_id" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg bg-white">
+            <option v-for="a in accountsStore.items" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
         </div>
       </div>
@@ -405,14 +396,14 @@ function submitForm() {
         </div>
         <div v-if="form.linkType === 'debt'">
           <label class="block text-xs font-semibold text-slate-600 mb-1.5">Dette concernée</label>
-          <select v-model="form.linkedDebt" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg bg-white">
-            <option v-for="d in store.debtNames" :key="d" :value="d">{{ d }}</option>
+          <select v-model="form.linkedDebtId" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg bg-white">
+            <option v-for="d in debtsStore.items" :key="d.id" :value="d.id">{{ d.name }}</option>
           </select>
         </div>
         <div v-if="form.linkType === 'savings'">
           <label class="block text-xs font-semibold text-slate-600 mb-1.5">Compte d'épargne cible</label>
-          <select v-model="form.savingsAccount" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg bg-white">
-            <option v-for="s in store.savingsAccountNames" :key="s" :value="s">{{ s }}</option>
+          <select v-model="form.savingsAccountId" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg bg-white">
+            <option v-for="s in accountsStore.savings" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </div>
       </div>
@@ -436,7 +427,7 @@ function submitForm() {
         <div class="grid gap-2">
           <div v-for="row in installmentRows" :key="row.index" class="flex items-center gap-3">
             <span class="w-[70px] text-xs text-slate-500 font-semibold">{{ row.indexLabel }}</span>
-            <input type="date" v-model="form.installmentDates[row.index]" class="flex-1 text-[13px] px-2.5 py-1.5 border border-slate-200 rounded-lg" />
+            <input type="date" :value="row.date" disabled class="flex-1 text-[13px] px-2.5 py-1.5 border border-slate-200 rounded-lg bg-slate-100 text-slate-500" />
             <span class="w-[90px] text-right text-[13px] font-semibold">{{ row.amountLabel }}</span>
           </div>
         </div>
@@ -466,14 +457,17 @@ function submitForm() {
         <div class="grid gap-2 max-h-[220px] overflow-y-auto">
           <div v-for="row in recurringRows" :key="row.index" class="flex items-center gap-3">
             <span class="w-[70px] text-xs text-slate-500 font-semibold">{{ row.indexLabel }}</span>
-            <input type="date" v-model="form.recurringDates[row.index]" class="flex-1 text-[13px] px-2.5 py-1.5 border border-slate-200 rounded-lg" />
+            <input type="date" :value="row.date" disabled class="flex-1 text-[13px] px-2.5 py-1.5 border border-slate-200 rounded-lg bg-slate-100 text-slate-500" />
             <span class="w-[90px] text-right text-[13px] font-semibold">{{ row.amountLabel }}</span>
           </div>
         </div>
       </div>
 
+      <div v-if="formError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">
+        {{ formError }}
+      </div>
       <div class="flex gap-3">
-        <button type="button" class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer" @click="submitForm">
+        <button type="button" :disabled="submitting" class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-60" @click="submitForm">
           <Icon name="plus" :stroke-width="2" />Ajouter
         </button>
         <button type="button" class="inline-flex items-center gap-1.5 bg-transparent text-slate-600 border border-slate-200 rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer hover:bg-slate-50" @click="closeForm">
@@ -503,15 +497,15 @@ function submitForm() {
           class="w-[22px] h-[22px] rounded-md border-[1.5px] text-white text-[13px] font-bold flex items-center justify-center cursor-pointer p-0"
           :class="t.reconciled ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300 bg-white'"
           aria-label="Basculer pointée"
-          @click="store.toggleReconciled(t.id)"
+          @click="toggleReconciled(t.id)"
         >{{ t.reconciled ? '✓' : '' }}</button>
         <span class="text-[13px] text-slate-500">{{ t.dateLabel }}</span>
         <span class="text-sm font-semibold">{{ t.label }}</span>
         <span class="flex gap-1.5 flex-wrap">
-          <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700">{{ t.category }}</span>
+          <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700">{{ t.categoryName }}</span>
           <span v-if="t.hasLink" :title="t.linkTitle" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-yellow-100 text-yellow-800">{{ t.linkLabel }}</span>
         </span>
-        <span class="text-[13px] text-slate-500">{{ t.account }}</span>
+        <span class="text-[13px] text-slate-500">{{ t.accountName }}</span>
         <span class="text-right text-sm font-bold" :class="t.amountColor">{{ t.amountLabel }}</span>
         <span class="text-right text-[13px] text-slate-500">{{ t.runningBalanceLabel }}</span>
       </div>

@@ -1,9 +1,11 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router';
 import Icon from './Icon.vue';
+import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
 
 const NAV_ITEMS = [
   { to: '/dashboard', icon: 'home', label: 'Tableau de bord', mobileLabel: 'Accueil' },
@@ -21,6 +23,15 @@ function isActive(to) {
 
 function openNewTransaction() {
   router.push({ path: '/transactions', query: { new: String(Date.now()) } });
+}
+
+async function logout() {
+  try {
+    await authStore.logout();
+  } finally {
+    authStore.clear();
+    router.push({ name: 'login' });
+  }
 }
 </script>
 
@@ -41,7 +52,14 @@ function openNewTransaction() {
       </router-link>
       <button
         type="button"
-        class="ml-auto inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm cursor-pointer"
+        class="ml-auto inline-flex items-center gap-1.5 bg-transparent text-slate-500 hover:text-slate-900 text-sm font-medium cursor-pointer"
+        @click="logout"
+      >
+        Déconnexion
+      </button>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm cursor-pointer"
         @click="openNewTransaction"
       >
         <Icon name="plus" :stroke-width="2" />Nouvelle transaction

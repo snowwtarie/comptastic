@@ -1,46 +1,69 @@
 <script setup>
-import { reactive, ref, computed } from 'vue';
-import { useLedgerStore } from '../stores/ledger';
+import { reactive, ref, computed, onMounted } from 'vue';
+import { useAccountsStore, ACCOUNT_TYPE_LABELS } from '../stores/accounts';
 import { eur } from '../lib/format';
 import { useIsMobile } from '../lib/useIsMobile';
 import Icon from '../components/Icon.vue';
 import ModalSheet from '../components/ModalSheet.vue';
+import { ApiError } from '../lib/api';
 
-const store = useLedgerStore();
+const accountsStore = useAccountsStore();
 const isMobile = useIsMobile();
+const loadError = ref('');
+
+onMounted(async () => {
+  try {
+    await accountsStore.fetch();
+  } catch {
+    loadError.value = 'Impossible de charger les comptes.';
+  }
+});
 
 const showForm = ref(false);
+const formError = ref('');
+const submitting = ref(false);
 function blankForm() {
-  return { name: '', bank: '', type: 'Compte courant', openingBalance: '' };
+  return { name: '', bank: '', type: 'checking', openingBalance: '' };
 }
 const form = reactive(blankForm());
 
 const accounts = computed(() =>
-  store.accountBalances().map((a) => ({
+  accountsStore.items.map((a) => ({
     ...a,
+    typeLabel: ACCOUNT_TYPE_LABELS[a.type] || a.type,
     balanceLabel: eur(a.balance),
-    hasPending: Math.abs(a.pendingEncours) > 0.005,
-    pendingLabel: `${a.pendingEncours >= 0 ? '+' : ''}${eur(a.pendingEncours)} non pointé`,
+    hasPending: Math.abs(a.pending_encours) > 0.005,
+    pendingLabel: `${a.pending_encours >= 0 ? '+' : ''}${eur(a.pending_encours)} non pointé`,
+    ibanLabel: a.iban_last4 ? `IBAN se terminant par ${a.iban_last4}` : '',
   }))
 );
 const totalBalance = computed(() => accounts.value.reduce((s, a) => s + a.balance, 0));
 
 function openForm() {
+  formError.value = '';
   showForm.value = true;
 }
 function closeForm() {
   showForm.value = false;
 }
-function submitForm() {
+async function submitForm() {
   if (!form.name) return;
-  store.addAccount({
-    name: form.name,
-    bank: form.bank,
-    type: form.type,
-    openingBalance: Number(form.openingBalance) || 0,
-  });
-  Object.assign(form, blankForm());
-  showForm.value = false;
+  formError.value = '';
+  submitting.value = true;
+  try {
+    await accountsStore.create({
+      name: form.name,
+      bank: form.bank,
+      type: form.type,
+      openingBalance: Number(form.openingBalance) || 0,
+    });
+    Object.assign(form, blankForm());
+    showForm.value = false;
+  } catch (e) {
+    formError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+  } finally {
+    submitting.value = false;
+  }
 }
 </script>
 
@@ -55,6 +78,8 @@ function submitForm() {
     </header>
 
     <main class="flex-1 overflow-y-auto px-4 pt-3.5 pb-6">
+      <div v-if="loadError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ loadError }}</div>
+
       <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 mb-3.5">
         <div class="text-xs text-slate-500 mb-1">Solde total</div>
         <div class="text-[26px] font-extrabold tracking-tight">{{ eur(totalBalance) }}</div>
@@ -67,7 +92,7 @@ function submitForm() {
               <div class="text-[10px] font-semibold tracking-wide uppercase text-indigo-600 mb-0.5">{{ acc.bank }}</div>
               <div class="text-sm font-bold">{{ acc.name }}</div>
             </div>
-            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700 whitespace-nowrap">{{ acc.type }}</span>
+            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700 whitespace-nowrap">{{ acc.typeLabel }}</span>
           </div>
           <div class="flex items-baseline gap-1.5 flex-wrap">
             <div class="text-lg font-extrabold">{{ acc.balanceLabel }}</div>
@@ -82,13 +107,16 @@ function submitForm() {
         <input v-model="form.name" type="text" placeholder="Nom du compte" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px]" />
         <input v-model="form.bank" type="text" placeholder="Banque" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px]" />
         <select v-model="form.type" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px] bg-white">
-          <option value="Compte courant">Compte courant</option>
-          <option value="Épargne">Épargne</option>
+          <option value="checking">Compte courant</option>
+          <option value="savings">Épargne</option>
         </select>
         <input v-model="form.openingBalance" type="number" step="0.01" placeholder="Solde initial (€)" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px]" />
       </div>
+      <div v-if="formError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">
+        {{ formError }}
+      </div>
       <div class="flex gap-2.5">
-        <button type="button" class="flex-1 bg-indigo-600 text-white rounded-[10px] py-3.5 text-sm font-bold cursor-pointer" @click="submitForm">Ajouter</button>
+        <button type="button" :disabled="submitting" class="flex-1 bg-indigo-600 text-white rounded-[10px] py-3.5 text-sm font-bold cursor-pointer disabled:opacity-60" @click="submitForm">Ajouter</button>
         <button type="button" class="flex-1 bg-slate-100 text-slate-600 rounded-[10px] py-3.5 text-sm font-bold cursor-pointer" @click="closeForm">Annuler</button>
       </div>
     </ModalSheet>
@@ -103,6 +131,8 @@ function submitForm() {
       </button>
     </div>
     <p class="mt-0 mb-7 text-sm text-slate-500">Soldes calculés à partir des opérations pointées, encours non pointé indiqué entre parenthèses.</p>
+
+    <div v-if="loadError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ loadError }}</div>
 
     <div class="flex items-baseline gap-6 flex-wrap bg-white border border-slate-200 rounded-2xl shadow-sm px-7 py-6 mb-7">
       <div>
@@ -126,8 +156,8 @@ function submitForm() {
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1.5">Type</label>
             <select v-model="form.type" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg bg-white">
-              <option value="Compte courant">Compte courant</option>
-              <option value="Épargne">Épargne</option>
+              <option value="checking">Compte courant</option>
+              <option value="savings">Épargne</option>
             </select>
           </div>
           <div>
@@ -136,8 +166,11 @@ function submitForm() {
           </div>
         </div>
       </div>
+      <div v-if="formError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">
+        {{ formError }}
+      </div>
       <div class="flex gap-3">
-        <button type="button" class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer" @click="submitForm">
+        <button type="button" :disabled="submitting" class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-60" @click="submitForm">
           <Icon name="plus" :stroke-width="2" />Ajouter
         </button>
         <button type="button" class="inline-flex items-center gap-1.5 bg-transparent text-slate-600 border border-slate-200 rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer hover:bg-slate-50" @click="closeForm">
@@ -153,14 +186,14 @@ function submitForm() {
             <div class="text-[11px] font-semibold tracking-wide uppercase text-indigo-600 mb-0.5">{{ acc.bank }}</div>
             <div class="text-base font-bold">{{ acc.name }}</div>
           </div>
-          <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 whitespace-nowrap">{{ acc.type }}</span>
+          <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 whitespace-nowrap">{{ acc.typeLabel }}</span>
         </div>
         <div class="mt-auto flex flex-col gap-1.5">
           <div class="flex items-baseline gap-2 flex-wrap">
             <div class="text-2xl font-extrabold tracking-tight">{{ acc.balanceLabel }}</div>
             <div v-if="acc.hasPending" class="text-[13px] text-slate-400">({{ acc.pendingLabel }})</div>
           </div>
-          <div class="text-xs text-slate-400">{{ acc.iban }}</div>
+          <div v-if="acc.ibanLabel" class="text-xs text-slate-400">{{ acc.ibanLabel }}</div>
         </div>
       </div>
     </section>

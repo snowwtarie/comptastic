@@ -1,41 +1,46 @@
 <script setup>
-import { ref, computed } from 'vue';
-import { useLedgerStore } from '../stores/ledger';
-import { eur, TODAY, toLocalISO } from '../lib/format';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useProjectionStore } from '../stores/projection';
+import { useSettingsStore } from '../stores/settings';
+import { eur, TODAY } from '../lib/format';
 import { useIsMobile } from '../lib/useIsMobile';
 import EditableAmount from '../components/EditableAmount.vue';
+import { ApiError } from '../lib/api';
 
-const HISTORY_MONTHS = 3;
-
-const store = useLedgerStore();
+const projectionStore = useProjectionStore();
+const settingsStore = useSettingsStore();
 const isMobile = useIsMobile();
 
 const horizon = ref(12);
+const settingsError = ref('');
+const loadError = ref('');
 
-const historyPoints = computed(() => {
-  const points = [];
-  for (let i = HISTORY_MONTHS; i >= 0; i--) {
-    const dateISO = i === 0 ? toLocalISO(TODAY) : toLocalISO(new Date(TODAY.getFullYear(), TODAY.getMonth() - i + 1, 0));
-    points.push({ monthOffset: -i, value: store.typeBalanceAt('Épargne', dateISO) });
+onMounted(async () => {
+  try {
+    await Promise.all([settingsStore.fetch(), projectionStore.fetch(horizon.value)]);
+  } catch {
+    loadError.value = 'Impossible de charger la projection.';
   }
-  return points;
 });
-const currentSavings = computed(() => historyPoints.value[historyPoints.value.length - 1].value);
+watch(horizon, async (h) => {
+  try {
+    await projectionStore.fetch(h);
+  } catch {
+    loadError.value = 'Impossible de charger la projection.';
+  }
+});
 
-const projected = computed(() => {
-  const contribution = Number(store.monthlyContribution) || 0;
-  const monthlyRate = (Number(store.annualRate) || 0) / 100 / 12;
-  const arr = [currentSavings.value];
-  for (let i = 1; i <= horizon.value; i++) arr.push(arr[i - 1] * (1 + monthlyRate) + contribution);
-  return arr;
-});
+const historyPoints = computed(() => projectionStore.history.map((p) => ({ monthOffset: p.month_offset, value: p.balance })));
+const currentSavings = computed(() => (historyPoints.value.length ? historyPoints.value[historyPoints.value.length - 1].value : 0));
+const projected = computed(() => projectionStore.projection);
 
 const svgDims = computed(() => (isMobile.value ? { w: 320, h: 150, pad: 6 } : { w: 600, h: 260, pad: 8 }));
 
 const chart = computed(() => {
   const { w, h, pad } = svgDims.value;
   const history = historyPoints.value;
-  const historyStart = history.length ? history[0].monthOffset : 0;
+  if (!history.length || !projected.value.length) return { w, h, historyLinePoints: '', projectionLinePoints: '', areaPoints: '', todayX: '0', axisLabels: [] };
+  const historyStart = history[0].monthOffset;
   const totalSpanMonths = horizon.value - historyStart;
   const allValues = [...history.map((p) => p.value), ...projected.value];
   const maxVal = Math.max(...allValues, 1);
@@ -60,11 +65,40 @@ const chart = computed(() => {
   return { w, h, historyLinePoints, projectionLinePoints, areaPoints, todayX, axisLabels };
 });
 
-const finalAmountLabel = computed(() => eur(projected.value[horizon.value], 0));
-const milestone6Label = computed(() => eur(projected.value[Math.min(6, horizon.value)], 0));
-const milestone12Label = computed(() => eur(projected.value[Math.min(12, horizon.value)], 0));
-const totalContributedLabel = computed(() => eur((Number(store.monthlyContribution) || 0) * horizon.value, 0));
-const contributionColor = computed(() => (store.monthlyContribution >= 0 ? 'text-slate-900' : 'text-red-600'));
+const finalAmountLabel = computed(() => (projected.value.length ? eur(projected.value[horizon.value], 0) : eur(0, 0)));
+const milestone6Label = computed(() => (projected.value.length ? eur(projected.value[Math.min(6, horizon.value)], 0) : eur(0, 0)));
+const milestone12Label = computed(() => (projected.value.length ? eur(projected.value[Math.min(12, horizon.value)], 0) : eur(0, 0)));
+const totalContributedLabel = computed(() => eur(settingsStore.monthlySavingsContribution * horizon.value, 0));
+const contributionColor = computed(() => (settingsStore.monthlySavingsContribution >= 0 ? 'text-slate-900' : 'text-red-600'));
+
+let updateChain = Promise.resolve();
+function queueSettingsUpdate(fn) {
+  updateChain = updateChain.then(fn, fn);
+  return updateChain;
+}
+
+async function updateContribution(value) {
+  return queueSettingsUpdate(async () => {
+    settingsError.value = '';
+    try {
+      await settingsStore.update({ monthlySavingsContribution: value });
+      await projectionStore.fetch(horizon.value);
+    } catch (e) {
+      settingsError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+    }
+  });
+}
+async function updateRate(value) {
+  return queueSettingsUpdate(async () => {
+    settingsError.value = '';
+    try {
+      await settingsStore.update({ annualReturnRate: value });
+      await projectionStore.fetch(horizon.value);
+    } catch (e) {
+      settingsError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+    }
+  });
+}
 </script>
 
 <template>
@@ -76,6 +110,8 @@ const contributionColor = computed(() => (store.monthlyContribution >= 0 ? 'text
     </header>
 
     <main class="flex-1 overflow-y-auto px-4 pt-3.5 pb-6">
+      <div v-if="loadError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ loadError }}</div>
+      <div v-if="settingsError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ settingsError }}</div>
       <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 mb-3.5">
         <div class="flex gap-2.5 mb-3">
           <select v-model.number="horizon" class="flex-1 text-xs font-semibold text-slate-900 bg-slate-100 border-none rounded-lg px-2.5 py-2">
@@ -89,22 +125,22 @@ const contributionColor = computed(() => (store.monthlyContribution >= 0 ? 'text
           <div class="flex-1">
             <div class="text-[10px] text-slate-500 mb-1">Effort mensuel</div>
             <EditableAmount
-              :model-value="store.monthlyContribution"
-              :display="`${store.monthlyContribution >= 0 ? '+' : ''}${eur(store.monthlyContribution, 0)}/m`"
+              :model-value="settingsStore.monthlySavingsContribution"
+              :display="`${settingsStore.monthlySavingsContribution >= 0 ? '+' : ''}${eur(settingsStore.monthlySavingsContribution, 0)}/m`"
               compact
               :step="10"
-              @update:model-value="(v) => (store.monthlyContribution = v)"
+              @update:model-value="updateContribution"
             />
           </div>
           <div class="flex-1">
             <div class="text-[10px] text-slate-500 mb-1">Taux annuel</div>
             <EditableAmount
-              :model-value="store.annualRate"
-              :display="`${store.annualRate}%`"
+              :model-value="settingsStore.annualReturnRate"
+              :display="`${settingsStore.annualReturnRate}%`"
               compact
               :step="0.1"
               min="0"
-              @update:model-value="(v) => (store.annualRate = v)"
+              @update:model-value="updateRate"
             />
           </div>
         </div>
@@ -137,6 +173,9 @@ const contributionColor = computed(() => (store.monthlyContribution >= 0 ? 'text
     <h1 class="m-0 mb-2 text-[28px] font-bold tracking-tight">Projection d'épargne</h1>
     <p class="mt-0 mb-7 text-sm text-slate-500">Historique réel des soldes d'épargne (tous comptes de type Épargne) et projection selon votre effort mensuel et un taux de rendement.</p>
 
+    <div v-if="loadError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ loadError }}</div>
+    <div v-if="settingsError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ settingsError }}</div>
+
     <div class="flex items-center gap-6 flex-wrap bg-white border border-slate-200 rounded-2xl shadow-sm px-7 py-6 mb-7">
       <div>
         <div class="text-[13px] font-semibold text-slate-500 mb-1.5">Épargne actuelle</div>
@@ -145,23 +184,23 @@ const contributionColor = computed(() => (store.monthlyContribution >= 0 ? 'text
       <div>
         <div class="text-[13px] font-semibold text-slate-500 mb-1.5">Effort d'épargne mensuel</div>
         <EditableAmount
-          :model-value="store.monthlyContribution"
-          :display="`${store.monthlyContribution >= 0 ? '+' : ''}${eur(store.monthlyContribution, 0)} / mois`"
+          :model-value="settingsStore.monthlySavingsContribution"
+          :display="`${settingsStore.monthlySavingsContribution >= 0 ? '+' : ''}${eur(settingsStore.monthlySavingsContribution, 0)} / mois`"
           suffix="€ / mois"
           :step="10"
           :value-class="contributionColor"
-          @update:model-value="(v) => (store.monthlyContribution = v)"
+          @update:model-value="updateContribution"
         />
       </div>
       <div>
         <div class="text-[13px] font-semibold text-slate-500 mb-1.5">Taux de rendement annuel</div>
         <EditableAmount
-          :model-value="store.annualRate"
-          :display="`${store.annualRate}%`"
+          :model-value="settingsStore.annualReturnRate"
+          :display="`${settingsStore.annualReturnRate}%`"
           suffix="%"
           :step="0.1"
           min="0"
-          @update:model-value="(v) => (store.annualRate = v)"
+          @update:model-value="updateRate"
         />
       </div>
       <div class="ml-auto">

@@ -1,77 +1,97 @@
 <script setup>
-import { computed } from 'vue';
-import { useLedgerStore, CAT_COLORS } from '../stores/ledger';
-import { eur, monthBoundsISO, TODAY } from '../lib/format';
+import { computed, ref, onMounted } from 'vue';
+import { useBudgetsStore } from '../stores/budgets';
+import { useSettingsStore } from '../stores/settings';
+import { eur, TODAY } from '../lib/format';
 import { useIsMobile } from '../lib/useIsMobile';
 import EditableAmount from '../components/EditableAmount.vue';
+import { ApiError } from '../lib/api';
 
-const store = useLedgerStore();
+const budgetsStore = useBudgetsStore();
+const settingsStore = useSettingsStore();
 const isMobile = useIsMobile();
+const loadError = ref('');
+
+onMounted(async () => {
+  try {
+    await Promise.all([budgetsStore.fetch(), settingsStore.fetch()]);
+  } catch {
+    loadError.value = 'Impossible de charger les budgets.';
+  }
+});
 
 const monthLabel = TODAY.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
-const spentByCategory = computed(() => {
-  const { start, end } = monthBoundsISO();
-  const spent = {};
-  for (const t of store.transactions) {
-    if (t.amount < 0 && t.date >= start && t.date <= end && t.category !== 'Revenus') {
-      spent[t.category] = (spent[t.category] || 0) + Math.abs(t.amount);
-    }
-  }
-  return spent;
-});
-
-function statusFor(pct) {
-  if (pct >= 100) return { key: 'over', label: 'Dépassé', bar: 'bg-red-600', badge: 'bg-red-50 text-red-700' };
-  if (pct >= 80) return { key: 'warn', label: 'Presque atteint', bar: 'bg-amber-600', badge: 'bg-amber-50 text-amber-700' };
-  return { key: 'ok', label: 'Sous contrôle', bar: 'bg-indigo-600', badge: 'bg-indigo-50 text-indigo-700' };
-}
+const STATUS_STYLES = {
+  over: { label: 'Dépassé', bar: 'bg-red-600', badge: 'bg-red-50 text-red-700' },
+  warn: { label: 'Presque atteint', bar: 'bg-amber-600', badge: 'bg-amber-50 text-amber-700' },
+  ok: { label: 'Sous contrôle', bar: 'bg-indigo-600', badge: 'bg-indigo-50 text-indigo-700' },
+};
 
 const rows = computed(() =>
-  store.expenseCategories.map((cat) => {
-    const budget = store.budgets[cat] ?? 0;
-    const spent = spentByCategory.value[cat] || 0;
-    const pct = budget > 0 ? (spent / budget) * 100 : 0;
-    const status = statusFor(pct);
+  budgetsStore.rows.map((row) => {
+    const style = STATUS_STYLES[row.status];
     return {
-      category: cat,
-      color: CAT_COLORS[cat] || '#94a3b8',
-      budget,
-      budgetLabel: eur(budget),
-      barWidthPct: Math.min(pct, 100).toFixed(1),
-      barClass: status.bar,
-      statusLabel: status.label,
-      statusBadgeClass: status.badge,
-      spentLabel: eur(spent),
-      remainingLabel: budget - spent >= 0 ? `${eur(budget - spent)} restants` : `${eur(spent - budget)} de dépassement`,
+      categoryId: row.category_id,
+      category: row.name,
+      color: row.color_hex,
+      budget: row.budget,
+      budgetLabel: eur(row.budget),
+      barWidthPct: Math.min(row.pct, 100).toFixed(1),
+      barClass: style.bar,
+      statusLabel: style.label,
+      statusBadgeClass: style.badge,
+      spentLabel: eur(row.spent),
+      remainingLabel: row.budget - row.spent >= 0 ? `${eur(row.budget - row.spent)} restants` : `${eur(row.spent - row.budget)} de dépassement`,
     };
   })
 );
 
-const totalBudget = computed(() => Object.values(store.budgets).reduce((a, b) => a + (Number(b) || 0), 0));
-const totalSpent = computed(() => Object.values(spentByCategory.value).reduce((a, b) => a + b, 0));
-const overPct = computed(() => (totalBudget.value > 0 ? (totalSpent.value / totalBudget.value) * 100 : 0));
-const overallStatus = computed(() => statusFor(overPct.value));
+const rowError = ref('');
+async function updateBudget(categoryId, value) {
+  rowError.value = '';
+  try {
+    await budgetsStore.update(categoryId, value);
+  } catch (e) {
+    rowError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+  }
+}
 
-const hasIncome = computed(() => store.income > 0);
-const isOverBudget = computed(() => hasIncome.value && totalBudget.value > store.income);
-const budgetedPortionPct = computed(() => (hasIncome.value ? Math.min((totalBudget.value / store.income) * 100, 100) : 0));
+const totalBudget = computed(() => budgetsStore.rows.reduce((s, r) => s + r.budget, 0));
+const totalSpent = computed(() => budgetsStore.rows.reduce((s, r) => s + r.spent, 0));
+const overPct = computed(() => (totalBudget.value > 0 ? (totalSpent.value / totalBudget.value) * 100 : 0));
+const overallStatus = computed(() => {
+  const key = overPct.value >= 100 ? 'over' : overPct.value >= 80 ? 'warn' : 'ok';
+  return { key, ...STATUS_STYLES[key] };
+});
+
+const hasIncome = computed(() => settingsStore.income > 0);
+const isOverBudget = computed(() => hasIncome.value && totalBudget.value > settingsStore.income);
+const budgetedPortionPct = computed(() => (hasIncome.value ? Math.min((totalBudget.value / settingsStore.income) * 100, 100) : 0));
 
 const incomeSegments = computed(() =>
-  store.expenseCategories.map((cat) => {
-    const budget = store.budgets[cat] ?? 0;
-    const widthPct = totalBudget.value > 0 ? (budget / totalBudget.value) * budgetedPortionPct.value : 0;
+  rows.value.map((row) => {
+    const widthPct = totalBudget.value > 0 ? (row.budget / totalBudget.value) * budgetedPortionPct.value : 0;
     return {
-      category: cat,
-      color: CAT_COLORS[cat] || '#94a3b8',
+      category: row.category,
+      color: row.color,
       widthPct: widthPct.toFixed(1),
-      amountLabel: eur(budget),
-      pctLabel: hasIncome.value ? `${Math.round((budget / store.income) * 100)}%` : '—',
+      amountLabel: row.budgetLabel,
+      pctLabel: hasIncome.value ? `${Math.round((row.budget / settingsStore.income) * 100)}%` : '—',
     };
   })
 );
-const savings = computed(() => store.income - totalBudget.value);
+const savings = computed(() => settingsStore.income - totalBudget.value);
 const savingsPct = computed(() => (hasIncome.value && !isOverBudget.value ? 100 - budgetedPortionPct.value : 0));
+
+async function updateIncome(value) {
+  rowError.value = '';
+  try {
+    await settingsStore.update({ income: value });
+  } catch (e) {
+    rowError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+  }
+}
 </script>
 
 <template>
@@ -83,6 +103,8 @@ const savingsPct = computed(() => (hasIncome.value && !isOverBudget.value ? 100 
     </header>
 
     <main class="flex-1 overflow-y-auto px-4 pt-3.5 pb-6">
+      <div v-if="loadError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ loadError }}</div>
+      <div v-if="rowError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ rowError }}</div>
       <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 mb-3.5 flex justify-between items-center">
         <div>
           <div class="text-[11px] text-slate-500 mb-1">Budgété</div>
@@ -95,7 +117,7 @@ const savingsPct = computed(() => (hasIncome.value && !isOverBudget.value ? 100 
       </div>
 
       <div class="grid gap-2.5">
-        <div v-for="row in rows" :key="row.category" class="bg-white border border-slate-200 rounded-xl shadow-sm p-3.5">
+        <div v-for="row in rows" :key="row.categoryId" class="bg-white border border-slate-200 rounded-xl shadow-sm p-3.5">
           <div class="flex justify-between items-center mb-2">
             <div class="flex items-center gap-2">
               <span class="w-2 h-2 rounded-sm" :style="{ background: row.color }"></span>
@@ -108,7 +130,7 @@ const savingsPct = computed(() => (hasIncome.value && !isOverBudget.value ? 100 
               compact
               :step="10"
               min="0"
-              @update:model-value="(v) => (store.budgets[row.category] = v)"
+              @update:model-value="(v) => updateBudget(row.categoryId, v)"
             />
           </div>
           <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden mb-1.5">
@@ -131,6 +153,9 @@ const savingsPct = computed(() => (hasIncome.value && !isOverBudget.value ? 100 
     </div>
     <p class="mt-0 mb-7 text-sm text-slate-500">Définissez une enveloppe mensuelle par catégorie et suivez sa consommation en direct.</p>
 
+    <div v-if="loadError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ loadError }}</div>
+    <div v-if="rowError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ rowError }}</div>
+
     <div class="flex items-center gap-6 flex-wrap bg-white border border-slate-200 rounded-2xl shadow-sm px-7 py-6 mb-7">
       <div>
         <div class="text-[13px] font-semibold text-slate-500 mb-1.5">Budgété ce mois</div>
@@ -147,13 +172,13 @@ const savingsPct = computed(() => (hasIncome.value && !isOverBudget.value ? 100 
       <div class="flex justify-between items-center gap-4 flex-wrap mb-4">
         <h2 class="text-base font-bold m-0">Répartition du revenu</h2>
         <EditableAmount
-          :model-value="store.income"
-          :display="`Revenu mensuel : ${eur(store.income)}`"
+          :model-value="settingsStore.income"
+          :display="`Revenu mensuel : ${eur(settingsStore.income)}`"
           variant="inline"
           suffix="€"
           :step="50"
           min="0"
-          @update:model-value="(v) => (store.income = v)"
+          @update:model-value="updateIncome"
         />
       </div>
 
@@ -182,7 +207,7 @@ const savingsPct = computed(() => (hasIncome.value && !isOverBudget.value ? 100 
     </section>
 
     <section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-      <div v-for="row in rows" :key="row.category" class="px-6 py-5 border-b border-slate-100 last:border-b-0">
+      <div v-for="row in rows" :key="row.categoryId" class="px-6 py-5 border-b border-slate-100 last:border-b-0">
         <div class="flex justify-between items-center gap-4 flex-wrap mb-3">
           <div class="flex items-center gap-2.5">
             <span class="w-2.5 h-2.5 rounded-sm shrink-0" :style="{ background: row.color }"></span>
@@ -196,7 +221,7 @@ const savingsPct = computed(() => (hasIncome.value && !isOverBudget.value ? 100 
             suffix="€"
             :step="10"
             min="0"
-            @update:model-value="(v) => (store.budgets[row.category] = v)"
+            @update:model-value="(v) => updateBudget(row.categoryId, v)"
           />
         </div>
         <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mb-2.5">
