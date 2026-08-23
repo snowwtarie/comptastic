@@ -1,5 +1,9 @@
-export const TODAY_ISO = '2026-08-06';
-export const TODAY = new Date(`${TODAY_ISO}T00:00:00`);
+export function toLocalISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export const TODAY = new Date();
+export const TODAY_ISO = toLocalISO(TODAY);
 
 export function eur(n, decimals = 2) {
   return (n || 0).toLocaleString('fr-FR', {
@@ -8,10 +12,6 @@ export function eur(n, decimals = 2) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
-}
-
-export function toLocalISO(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export function fmtDateLabel(iso, { short = false } = {}) {

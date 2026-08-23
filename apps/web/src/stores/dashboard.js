@@ -12,5 +12,9 @@ export const useDashboardStore = defineStore('dashboard', () => {
     return res.data;
   }
 
-  return { byPeriod, fetch };
+  function clearCache() {
+    byPeriod.value = {};
+  }
+
+  return { byPeriod, fetch, clearCache };
 });

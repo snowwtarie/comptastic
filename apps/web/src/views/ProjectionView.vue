@@ -22,7 +22,13 @@ onMounted(async () => {
     loadError.value = 'Impossible de charger la projection.';
   }
 });
-watch(horizon, (h) => projectionStore.fetch(h));
+watch(horizon, async (h) => {
+  try {
+    await projectionStore.fetch(h);
+  } catch {
+    loadError.value = 'Impossible de charger la projection.';
+  }
+});
 
 const historyPoints = computed(() => projectionStore.history.map((p) => ({ monthOffset: p.month_offset, value: p.balance })));
 const currentSavings = computed(() => (historyPoints.value.length ? historyPoints.value[historyPoints.value.length - 1].value : 0));

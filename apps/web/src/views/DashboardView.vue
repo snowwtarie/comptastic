@@ -27,7 +27,13 @@ onMounted(async () => {
     loadError.value = 'Impossible de charger le tableau de bord.';
   }
 });
-watch(period, (p) => dashboardStore.fetch(p));
+watch(period, async (p) => {
+  try {
+    await dashboardStore.fetch(p);
+  } catch {
+    loadError.value = 'Impossible de charger le tableau de bord.';
+  }
+});
 
 const data = computed(() => dashboardStore.byPeriod[period.value] || { bars: [], categories: [] });
 

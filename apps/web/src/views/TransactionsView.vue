@@ -27,10 +27,14 @@ const loadError = ref('');
 const listError = ref('');
 
 async function loadTransactions() {
-  await transactionsStore.fetch({
-    period: period.value,
-    accountId: accountFilter.value === 'all' ? null : accountFilter.value,
-  });
+  try {
+    await transactionsStore.fetch({
+      period: period.value,
+      accountId: accountFilter.value === 'all' ? null : accountFilter.value,
+    });
+  } catch {
+    loadError.value = 'Impossible de charger les transactions.';
+  }
 }
 
 onMounted(async () => {

@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { apiFetch } from '../lib/api';
+import { useDashboardStore } from './dashboard';
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null); // { id, name, email } | null
@@ -32,11 +33,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     await apiFetch('/api/logout', { method: 'POST' });
-    user.value = null;
+    clear();
   }
 
   function clear() {
     user.value = null;
+    useDashboardStore().clearCache();
   }
 
   return { user, status, boot, login, register, logout, clear };
