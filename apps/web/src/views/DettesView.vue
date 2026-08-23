@@ -1,58 +1,66 @@
 <script setup>
-import { reactive, ref, computed } from 'vue';
-import { useLedgerStore } from '../stores/ledger';
+import { reactive, ref, computed, onMounted } from 'vue';
+import { useDebtsStore } from '../stores/debts';
 import { eur, fmtDateLabel } from '../lib/format';
 import Icon from '../components/Icon.vue';
 import ModalSheet from '../components/ModalSheet.vue';
 import { useIsMobile } from '../lib/useIsMobile';
+import { ApiError } from '../lib/api';
 
-const store = useLedgerStore();
+const debtsStore = useDebtsStore();
 const isMobile = useIsMobile();
 
+onMounted(() => {
+  debtsStore.fetch();
+});
+
 const showForm = ref(false);
+const formError = ref('');
 function blankForm() {
   return { name: '', originalAmount: '', remainingAmount: '', monthlyPayment: '', rate: '', endDate: '' };
 }
 const form = reactive(blankForm());
 
 const debts = computed(() =>
-  store.debts.map((d) => {
-    const progressPct = d.originalAmount > 0 ? Math.min(((d.originalAmount - d.remainingAmount) / d.originalAmount) * 100, 100) : 0;
-    const monthsLeft = d.monthlyPayment > 0 ? Math.ceil(d.remainingAmount / d.monthlyPayment) : null;
-    return {
-      ...d,
-      remainingLabel: eur(d.remainingAmount),
-      originalLabel: eur(d.originalAmount),
-      monthlyLabel: eur(d.monthlyPayment),
-      rateLabel: `${d.rate}%`,
-      endDateLabel: fmtDateLabel(d.endDate),
-      progressPct: progressPct.toFixed(1),
-      progressLabel: `${Math.round(progressPct)}%`,
-      monthsLeftLabel: monthsLeft !== null ? `${monthsLeft} mensualité(s) restante(s)` : '—',
-    };
-  })
+  debtsStore.items.map((d) => ({
+    ...d,
+    remainingLabel: eur(d.remaining_amount),
+    originalLabel: eur(d.original_amount),
+    monthlyLabel: eur(d.monthly_payment),
+    rateLabel: `${d.rate}%`,
+    endDateLabel: fmtDateLabel(d.end_date),
+    progressPct: d.progress_pct.toFixed(1),
+    progressLabel: `${Math.round(d.progress_pct)}%`,
+    monthsLeftLabel: d.months_left !== null ? `${d.months_left} mensualité(s) restante(s)` : '—',
+  }))
 );
-const totalRemaining = computed(() => debts.value.reduce((s, d) => s + d.remainingAmount, 0));
-const totalMonthly = computed(() => debts.value.reduce((s, d) => s + d.monthlyPayment, 0));
+const totalRemaining = computed(() => debts.value.reduce((s, d) => s + d.remaining_amount, 0));
+const totalMonthly = computed(() => debts.value.reduce((s, d) => s + d.monthly_payment, 0));
 
 function openForm() {
+  formError.value = '';
   showForm.value = true;
 }
 function closeForm() {
   showForm.value = false;
 }
-function submitForm() {
+async function submitForm() {
   if (!form.name || !form.originalAmount) return;
-  store.addDebt({
-    name: form.name,
-    originalAmount: Number(form.originalAmount) || 0,
-    remainingAmount: Number(form.remainingAmount) || Number(form.originalAmount) || 0,
-    monthlyPayment: Number(form.monthlyPayment) || 0,
-    rate: Number(form.rate) || 0,
-    endDate: form.endDate || '2027-01-01',
-  });
-  Object.assign(form, blankForm());
-  showForm.value = false;
+  formError.value = '';
+  try {
+    await debtsStore.create({
+      name: form.name,
+      originalAmount: Number(form.originalAmount) || 0,
+      remainingAmount: Number(form.remainingAmount) || Number(form.originalAmount) || 0,
+      monthlyPayment: Number(form.monthlyPayment) || 0,
+      rate: Number(form.rate) || 0,
+      endDate: form.endDate || '2027-01-01',
+    });
+    Object.assign(form, blankForm());
+    showForm.value = false;
+  } catch (e) {
+    formError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+  }
 }
 </script>
 
@@ -108,6 +116,9 @@ function submitForm() {
           <label class="block text-xs font-semibold text-slate-600 mb-1.5">Échéance finale</label>
           <input v-model="form.endDate" type="date" class="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg" />
         </div>
+      </div>
+      <div v-if="formError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">
+        {{ formError }}
       </div>
       <div class="flex gap-3">
         <button type="button" class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer" @click="submitForm">
