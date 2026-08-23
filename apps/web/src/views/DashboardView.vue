@@ -1,92 +1,56 @@
 <script setup>
-import { ref, computed } from 'vue';
-import { useLedgerStore, CAT_COLOR_LIST } from '../stores/ledger';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useDashboardStore } from '../stores/dashboard';
+import { useAccountsStore } from '../stores/accounts';
+import { useCategoriesStore } from '../stores/categories';
 import { eur } from '../lib/format';
 import { useIsMobile } from '../lib/useIsMobile';
 import Icon from '../components/Icon.vue';
 
-// Illustrative period datasets for the charts (mirrors the design's demo data —
-// the 10 seed transactions are too sparse to derive a meaningful weekly/monthly
-// breakdown from, so both breakpoints share this single hardcoded series).
-const PERIODS = {
-  current: {
-    label: 'Ce mois',
-    bars: [
-      { label: 'Sem. 1', income: 620, expense: 540 },
-      { label: 'Sem. 2', income: 580, expense: 610 },
-      { label: 'Sem. 3', income: 700, expense: 520 },
-      { label: 'Sem. 4', income: 540, expense: 630 },
-    ],
-    categories: [
-      { name: 'Logement', amount: 780 },
-      { name: 'Alimentation', amount: 540 },
-      { name: 'Transport', amount: 310 },
-      { name: 'Loisirs', amount: 260 },
-      { name: 'Santé', amount: 190 },
-      { name: 'Autres', amount: 220 },
-    ],
-  },
-  previous: {
-    label: 'Mois dernier',
-    bars: [
-      { label: 'Sem. 1', income: 550, expense: 600 },
-      { label: 'Sem. 2', income: 610, expense: 540 },
-      { label: 'Sem. 3', income: 590, expense: 560 },
-      { label: 'Sem. 4', income: 600, expense: 700 },
-    ],
-    categories: [
-      { name: 'Logement', amount: 780 },
-      { name: 'Alimentation', amount: 610 },
-      { name: 'Transport', amount: 340 },
-      { name: 'Loisirs', amount: 300 },
-      { name: 'Santé', amount: 175 },
-      { name: 'Autres', amount: 195 },
-    ],
-  },
-  year: {
-    label: 'Cette année',
-    bars: [
-      { label: 'Jan', income: 2200, expense: 1900 },
-      { label: 'Fév', income: 2100, expense: 2300 },
-      { label: 'Mar', income: 2400, expense: 2000 },
-      { label: 'Avr', income: 2250, expense: 2150 },
-      { label: 'Mai', income: 2300, expense: 1950 },
-      { label: 'Juin', income: 2500, expense: 2600 },
-      { label: 'Juil', income: 2600, expense: 2800 },
-      { label: 'Août', income: 2150, expense: 1900 },
-      { label: 'Sep', income: 2400, expense: 2100 },
-      { label: 'Oct', income: 2350, expense: 2250 },
-      { label: 'Nov', income: 2450, expense: 2300 },
-      { label: 'Déc', income: 2700, expense: 3100 },
-    ],
-    categories: [
-      { name: 'Logement', amount: 9200 },
-      { name: 'Alimentation', amount: 6400 },
-      { name: 'Transport', amount: 3600 },
-      { name: 'Loisirs', amount: 3800 },
-      { name: 'Santé', amount: 2100 },
-      { name: 'Autres', amount: 2250 },
-    ],
-  },
-};
-PERIODS.custom = PERIODS.current;
-
-const store = useLedgerStore();
+const dashboardStore = useDashboardStore();
+const accountsStore = useAccountsStore();
+const categoriesStore = useCategoriesStore();
 const isMobile = useIsMobile();
 
 const period = ref('current');
-const showAll = ref(false);
-const data = computed(() => PERIODS[period.value] || PERIODS.current);
+const loadError = ref('');
+
+onMounted(async () => {
+  try {
+    await Promise.all([
+      accountsStore.fetch(),
+      categoriesStore.fetch(),
+      dashboardStore.fetch('current'),
+      dashboardStore.fetch('previous'),
+    ]);
+  } catch {
+    loadError.value = 'Impossible de charger le tableau de bord.';
+  }
+});
+watch(period, (p) => dashboardStore.fetch(p));
+
+const data = computed(() => dashboardStore.byPeriod[period.value] || { bars: [], categories: [] });
+
+function namedCategories(categories) {
+  return categories.map((c) => ({
+    name: categoriesStore.byId[c.category_id]?.name ?? '—',
+    color: categoriesStore.byId[c.category_id]?.color_hex ?? '#94a3b8',
+    amount: c.amount,
+  }));
+}
 
 const accountsWithLabel = computed(() =>
-  store.accountBalances().map((a) => ({
+  accountsStore.items.map((a) => ({
     ...a,
+    typeLabel: a.type === 'savings' ? 'Épargne' : 'Compte courant',
     balanceLabel: eur(a.balance),
-    hasPending: Math.abs(a.pendingEncours) > 0.005,
-    pendingLabel: `${a.pendingEncours >= 0 ? '+' : ''}${eur(a.pendingEncours)} non pointé`,
+    hasPending: Math.abs(a.pending_encours) > 0.005,
+    pendingLabel: `${a.pending_encours >= 0 ? '+' : ''}${eur(a.pending_encours)} non pointé`,
   }))
 );
 const totalBalance = computed(() => accountsWithLabel.value.reduce((s, a) => s + a.balance, 0));
+
+const showAll = ref(false);
 const visibleAccounts = computed(() => (showAll.value ? accountsWithLabel.value : accountsWithLabel.value.slice(0, 3)));
 const hasMoreAccounts = computed(() => accountsWithLabel.value.length > 3);
 const toggleLabel = computed(() => (showAll.value ? 'Voir moins' : `Voir plus (${accountsWithLabel.value.length - 3})`));
@@ -94,7 +58,8 @@ const toggleLabel = computed(() => (showAll.value ? 'Voir moins' : `Voir plus ($
 // Desktop bar + net-line chart
 const chart = computed(() => {
   const bars = data.value.bars;
-  const maxTotal = Math.max(...bars.map((b) => b.income + b.expense));
+  if (!bars.length) return { bars: [], netPolylinePoints: '' };
+  const maxTotal = Math.max(...bars.map((b) => b.income + b.expense), 1);
   const scale = 260 / maxTotal;
   const points = bars.map((b, i) => {
     const net = b.income - b.expense;
@@ -119,27 +84,33 @@ const chart = computed(() => {
 
 // Desktop category donut (all categories, with legend)
 const categoryChart = computed(() => {
-  const catTotal = data.value.categories.reduce((s, c) => s + c.amount, 0);
-  const sorted = [...data.value.categories].sort((a, b) => b.amount - a.amount);
+  const named = namedCategories(data.value.categories);
+  const catTotal = named.reduce((s, c) => s + c.amount, 0);
+  const sorted = [...named].sort((a, b) => b.amount - a.amount);
   let cum = 0;
   const gradientParts = [];
-  const categories = sorted.map((c, i) => {
-    const pct = (c.amount / catTotal) * 100;
+  const categories = sorted.map((c) => {
+    const pct = catTotal > 0 ? (c.amount / catTotal) * 100 : 0;
     const start = cum;
     cum += pct;
-    const color = CAT_COLOR_LIST[i % CAT_COLOR_LIST.length];
-    gradientParts.push(`${color} ${start.toFixed(2)}% ${cum.toFixed(2)}%`);
-    return { name: c.name, color, amountLabel: eur(c.amount, 0), pctLabel: `${Math.round(pct)}%` };
+    gradientParts.push(`${c.color} ${start.toFixed(2)}% ${cum.toFixed(2)}%`);
+    return { name: c.name, color: c.color, amountLabel: eur(c.amount, 0), pctLabel: `${Math.round(pct)}%` };
   });
   return { categories, donutGradient: `conic-gradient(${gradientParts.join(', ')})`, categoryTotalLabel: eur(catTotal, 0) };
 });
 
-// Desktop trend badge: spending this month vs last month (fixed comparison, independent of selected period)
-const curExpense = PERIODS.current.categories.reduce((s, c) => s + c.amount, 0);
-const prevExpense = PERIODS.previous.categories.reduce((s, c) => s + c.amount, 0);
-const trendPct = ((prevExpense - curExpense) / prevExpense) * 100;
-const trendPositive = trendPct >= 0;
-const trendLabel = `${trendPositive ? '-' : '+'}${Math.abs(trendPct).toFixed(1)}% de dépenses vs mois dernier`;
+// Desktop trend badge: current vs previous month spending, independent of the selected period
+const trend = computed(() => {
+  const cur = dashboardStore.byPeriod.current;
+  const prev = dashboardStore.byPeriod.previous;
+  if (!cur || !prev) return { label: '', positive: true };
+  const curExpense = cur.categories.reduce((s, c) => s + c.amount, 0);
+  const prevExpense = prev.categories.reduce((s, c) => s + c.amount, 0);
+  if (prevExpense === 0) return { label: '', positive: true };
+  const trendPct = ((prevExpense - curExpense) / prevExpense) * 100;
+  const positive = trendPct >= 0;
+  return { label: `${positive ? '-' : '+'}${Math.abs(trendPct).toFixed(1)}% de dépenses vs mois dernier`, positive };
+});
 
 // Mobile summary: totals + top categories for the selected period
 const mobileSummary = computed(() => {
@@ -147,17 +118,17 @@ const mobileSummary = computed(() => {
   const income = bars.reduce((s, b) => s + b.income, 0);
   const expense = bars.reduce((s, b) => s + b.expense, 0);
   const maxIE = Math.max(income, expense, 1);
-  const catTotal = data.value.categories.reduce((s, c) => s + c.amount, 0);
-  const sorted = [...data.value.categories].sort((a, b) => b.amount - a.amount);
+  const named = namedCategories(data.value.categories);
+  const catTotal = named.reduce((s, c) => s + c.amount, 0);
+  const sorted = [...named].sort((a, b) => b.amount - a.amount);
   let cum = 0;
   const gradientParts = [];
-  const topCategories = sorted.slice(0, 4).map((c, i) => {
-    const pct = (c.amount / catTotal) * 100;
+  const topCategories = sorted.slice(0, 4).map((c) => {
+    const pct = catTotal > 0 ? (c.amount / catTotal) * 100 : 0;
     const start = cum;
     cum += pct;
-    const color = CAT_COLOR_LIST[i % CAT_COLOR_LIST.length];
-    gradientParts.push(`${color} ${start.toFixed(1)}% ${cum.toFixed(1)}%`);
-    return { name: c.name, color, pctLabel: `${Math.round(pct)}%` };
+    gradientParts.push(`${c.color} ${start.toFixed(1)}% ${cum.toFixed(1)}%`);
+    return { name: c.name, color: c.color, pctLabel: `${Math.round(pct)}%` };
   });
   if (cum < 100) gradientParts.push(`#e2e8f0 ${cum.toFixed(1)}% 100%`);
   const surplusPositive = income >= expense;
@@ -197,6 +168,7 @@ const mobileSummary = computed(() => {
     </header>
 
     <main class="flex-1 overflow-y-auto px-4 pt-4 pb-24">
+      <div v-if="loadError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ loadError }}</div>
       <section class="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 mb-3.5">
         <div class="text-[13px] font-bold mb-3">Recettes vs dépenses</div>
         <div class="flex gap-4 mb-2.5">
@@ -266,6 +238,8 @@ const mobileSummary = computed(() => {
       </select>
     </div>
 
+    <div v-if="loadError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ loadError }}</div>
+
     <div class="flex items-center gap-6 flex-wrap bg-white border border-slate-200 rounded-2xl shadow-sm px-7 py-6 mb-8">
       <div>
         <div class="text-[13px] font-semibold text-slate-500 mb-1.5">Solde total</div>
@@ -273,8 +247,8 @@ const mobileSummary = computed(() => {
       </div>
       <span
         class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
-        :class="trendPositive ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'"
-      >{{ trendLabel }}</span>
+        :class="trend.positive ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'"
+      >{{ trend.label }}</span>
       <div class="text-[13px] text-slate-500">sur {{ accountsWithLabel.length }} comptes</div>
     </div>
 
@@ -343,14 +317,14 @@ const mobileSummary = computed(() => {
               <div class="text-[11px] font-semibold tracking-wide uppercase text-indigo-600 mb-0.5">{{ acc.bank }}</div>
               <div class="text-base font-bold">{{ acc.name }}</div>
             </div>
-            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 whitespace-nowrap">{{ acc.type }}</span>
+            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 whitespace-nowrap">{{ acc.typeLabel }}</span>
           </div>
           <div class="mt-auto flex flex-col gap-1.5">
             <div class="flex items-baseline gap-2 flex-wrap">
               <div class="text-2xl font-extrabold tracking-tight">{{ acc.balanceLabel }}</div>
               <div v-if="acc.hasPending" class="text-[13px] text-slate-400">({{ acc.pendingLabel }})</div>
             </div>
-            <div class="text-xs text-slate-400">{{ acc.iban }}</div>
+            <div v-if="acc.iban_last4" class="text-xs text-slate-400">IBAN se terminant par {{ acc.iban_last4 }}</div>
           </div>
         </div>
       </div>
