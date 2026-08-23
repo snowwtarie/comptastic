@@ -65,23 +65,33 @@ const milestone12Label = computed(() => (projected.value.length ? eur(projected.
 const totalContributedLabel = computed(() => eur(settingsStore.monthlySavingsContribution * horizon.value, 0));
 const contributionColor = computed(() => (settingsStore.monthlySavingsContribution >= 0 ? 'text-slate-900' : 'text-red-600'));
 
+let updateChain = Promise.resolve();
+function queueSettingsUpdate(fn) {
+  updateChain = updateChain.then(fn, fn);
+  return updateChain;
+}
+
 async function updateContribution(value) {
-  settingsError.value = '';
-  try {
-    await settingsStore.update({ monthlySavingsContribution: value });
-    await projectionStore.fetch(horizon.value);
-  } catch (e) {
-    settingsError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
-  }
+  return queueSettingsUpdate(async () => {
+    settingsError.value = '';
+    try {
+      await settingsStore.update({ monthlySavingsContribution: value });
+      await projectionStore.fetch(horizon.value);
+    } catch (e) {
+      settingsError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+    }
+  });
 }
 async function updateRate(value) {
-  settingsError.value = '';
-  try {
-    await settingsStore.update({ annualReturnRate: value });
-    await projectionStore.fetch(horizon.value);
-  } catch (e) {
-    settingsError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
-  }
+  return queueSettingsUpdate(async () => {
+    settingsError.value = '';
+    try {
+      await settingsStore.update({ annualReturnRate: value });
+      await projectionStore.fetch(horizon.value);
+    } catch (e) {
+      settingsError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+    }
+  });
 }
 </script>
 
