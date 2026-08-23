@@ -11,9 +11,14 @@ export const useCategoriesStore = defineStore('categories', () => {
 
   async function fetch() {
     if (loaded.value) return;
-    const res = await apiFetch('/api/categories');
-    items.value = res.data;
     loaded.value = true;
+    try {
+      const res = await apiFetch('/api/categories');
+      items.value = res.data;
+    } catch (e) {
+      loaded.value = false;
+      throw e;
+    }
   }
 
   return { items, byId, expense, fetch };
