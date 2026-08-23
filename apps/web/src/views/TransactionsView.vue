@@ -24,6 +24,7 @@ const showForm = ref(false);
 const formError = ref('');
 const submitting = ref(false);
 const loadError = ref('');
+const listError = ref('');
 
 async function loadTransactions() {
   await transactionsStore.fetch({
@@ -35,6 +36,10 @@ async function loadTransactions() {
 onMounted(async () => {
   try {
     await Promise.all([categoriesStore.fetch(), accountsStore.fetch(), debtsStore.fetch(), loadTransactions()]);
+    if (form.category_id === null) form.category_id = categoriesStore.expense[0]?.id ?? null;
+    if (form.account_id === null) form.account_id = accountsStore.items[0]?.id ?? null;
+    if (form.linkedDebtId === null) form.linkedDebtId = debtsStore.items[0]?.id ?? null;
+    if (form.savingsAccountId === null) form.savingsAccountId = accountsStore.savings[0]?.id ?? null;
   } catch {
     loadError.value = 'Impossible de charger les transactions.';
   }
@@ -152,7 +157,12 @@ async function submitForm() {
 }
 
 async function toggleReconciled(id) {
-  await transactionsStore.toggleReconciled(id);
+  listError.value = '';
+  try {
+    await transactionsStore.toggleReconciled(id);
+  } catch {
+    listError.value = 'Impossible de mettre à jour la transaction.';
+  }
 }
 </script>
 
@@ -176,6 +186,7 @@ async function toggleReconciled(id) {
 
     <main class="flex-1 overflow-y-auto px-4 pt-3.5 pb-24">
       <div v-if="loadError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ loadError }}</div>
+      <div v-if="listError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ listError }}</div>
 
       <div class="text-xs text-slate-400 mb-2.5">{{ transactions.length }} transactions</div>
       <div class="grid gap-2.5">
@@ -323,6 +334,7 @@ async function toggleReconciled(id) {
     </div>
 
     <div v-if="loadError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ loadError }}</div>
+    <div v-if="listError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ listError }}</div>
 
     <ModalSheet v-if="showForm" title="Nouvelle transaction" max-width="640px" @close="closeForm">
       <div class="grid grid-cols-[2fr_1fr] gap-4 mb-4">
