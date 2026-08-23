@@ -2,13 +2,17 @@
 import { reactive, ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useIsMobile } from '../lib/useIsMobile';
+import { useAuthStore } from '../stores/auth';
+import { ApiError } from '../lib/api';
 
 const router = useRouter();
 const isMobile = useIsMobile();
+const authStore = useAuthStore();
 
 const mode = ref('login');
 const form = reactive({ name: '', email: '', password: '', confirmPassword: '' });
 const error = ref('');
+const submitting = ref(false);
 
 const isLogin = computed(() => mode.value === 'login');
 const isSignup = computed(() => mode.value === 'signup');
@@ -29,7 +33,7 @@ function validEmail(v) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
-function submit() {
+async function submit() {
   if (!validEmail(form.email)) {
     error.value = 'Adresse e-mail invalide.';
     return;
@@ -48,8 +52,25 @@ function submit() {
       return;
     }
   }
-  // Stub auth: no backend wired up yet, just move on to the app shell.
-  router.push('/dashboard');
+
+  error.value = '';
+  submitting.value = true;
+  try {
+    if (isSignup.value) {
+      await authStore.register({ name: form.name, email: form.email, password: form.password });
+    } else {
+      await authStore.login(form.email, form.password);
+    }
+    router.push('/dashboard');
+  } catch (e) {
+    if (e instanceof ApiError) {
+      error.value = e.errors ? Object.values(e.errors).flat()[0] : e.message;
+    } else {
+      error.value = 'Une erreur est survenue.';
+    }
+  } finally {
+    submitting.value = false;
+  }
 }
 </script>
 
@@ -119,7 +140,8 @@ function submit() {
 
         <button
           type="button"
-          class="w-full bg-indigo-600 text-white rounded-[10px] py-3.5 text-sm font-bold cursor-pointer"
+          :disabled="submitting"
+          class="w-full bg-indigo-600 text-white rounded-[10px] py-3.5 text-sm font-bold cursor-pointer disabled:opacity-60"
           @click="submit"
         >{{ submitLabel }}</button>
 
@@ -186,7 +208,8 @@ function submit() {
 
         <button
           type="button"
-          class="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg py-3 text-sm font-semibold shadow-sm cursor-pointer"
+          :disabled="submitting"
+          class="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg py-3 text-sm font-semibold shadow-sm cursor-pointer disabled:opacity-60"
           @click="submit"
         >{{ submitLabel }}</button>
 
