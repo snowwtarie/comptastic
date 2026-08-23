@@ -8,9 +8,10 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        $this->call([
-            CategorySeeder::class,
-            DemoDataSeeder::class,
-        ]);
+        $this->call(CategorySeeder::class);
+
+        if (app()->environment('local', 'testing')) {
+            $this->call(DemoDataSeeder::class);
+        }
     }
 }
