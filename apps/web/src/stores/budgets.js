@@ -25,7 +25,11 @@ export const useBudgetsStore = defineStore('budgets', () => {
       body: { monthly_amount: monthlyAmount },
     });
     const row = rows.value.find((r) => r.category_id === categoryId);
-    if (row) row.budget = res.data.monthly_amount;
+    if (row) {
+      row.budget = res.data.monthly_amount;
+      row.pct = row.budget > 0 ? (row.spent / row.budget) * 100 : 0;
+      row.status = row.pct >= 100 ? 'over' : row.pct >= 80 ? 'warn' : 'ok';
+    }
   }
 
   return { rows, fetch, update };
