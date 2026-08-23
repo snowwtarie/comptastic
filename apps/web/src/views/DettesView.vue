@@ -10,12 +10,19 @@ import { ApiError } from '../lib/api';
 const debtsStore = useDebtsStore();
 const isMobile = useIsMobile();
 
-onMounted(() => {
-  debtsStore.fetch();
+const loadError = ref('');
+
+onMounted(async () => {
+  try {
+    await debtsStore.fetch();
+  } catch {
+    loadError.value = 'Impossible de charger les dettes.';
+  }
 });
 
 const showForm = ref(false);
 const formError = ref('');
+const submitting = ref(false);
 function blankForm() {
   return { name: '', originalAmount: '', remainingAmount: '', monthlyPayment: '', rate: '', endDate: '' };
 }
@@ -47,6 +54,7 @@ function closeForm() {
 async function submitForm() {
   if (!form.name || !form.originalAmount) return;
   formError.value = '';
+  submitting.value = true;
   try {
     await debtsStore.create({
       name: form.name,
@@ -60,6 +68,8 @@ async function submitForm() {
     showForm.value = false;
   } catch (e) {
     formError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+  } finally {
+    submitting.value = false;
   }
 }
 </script>
@@ -73,6 +83,8 @@ async function submitForm() {
       </button>
     </div>
     <p class="mt-0 mb-7 text-sm text-slate-500">Suivez le remboursement de vos crédits, prêts et paiements échelonnés.</p>
+
+    <div v-if="loadError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ loadError }}</div>
 
     <div class="flex items-center gap-6 flex-wrap bg-white border border-slate-200 rounded-2xl shadow-sm px-7 py-6 mb-7">
       <div>
@@ -121,7 +133,7 @@ async function submitForm() {
         {{ formError }}
       </div>
       <div class="flex gap-3">
-        <button type="button" class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer" @click="submitForm">
+        <button type="button" :disabled="submitting" class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-60" @click="submitForm">
           <Icon name="plus" :stroke-width="2" />Ajouter
         </button>
         <button type="button" class="inline-flex items-center gap-1.5 bg-transparent text-slate-600 border border-slate-200 rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer hover:bg-slate-50" @click="closeForm">
