@@ -21,7 +21,13 @@ export const useSettingsStore = defineStore('settings', () => {
     loaded.value = true;
   }
 
-  async function update(partial) {
+  let updateChain = Promise.resolve();
+  function update(partial) {
+    updateChain = updateChain.then(() => doUpdate(partial), () => doUpdate(partial));
+    return updateChain;
+  }
+
+  async function doUpdate(partial) {
     const res = await apiFetch('/api/settings', {
       method: 'PUT',
       body: {

@@ -16,6 +16,14 @@ export function registerUnauthorizedHandler(fn) {
   onUnauthorized = fn;
 }
 
+export function resetCsrf() {
+  csrfPrimed = false;
+}
+
+export function extractErrorMessage(e) {
+  return e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+}
+
 async function primeCsrf() {
   if (csrfPrimed) return;
   await fetch(`${BASE}/sanctum/csrf-cookie`, { credentials: 'include' });

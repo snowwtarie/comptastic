@@ -5,7 +5,7 @@ import { eur, fmtDateLabel } from '../lib/format';
 import Icon from '../components/Icon.vue';
 import ModalSheet from '../components/ModalSheet.vue';
 import { useIsMobile } from '../lib/useIsMobile';
-import { ApiError } from '../lib/api';
+import { extractErrorMessage } from '../lib/api';
 
 const debtsStore = useDebtsStore();
 const isMobile = useIsMobile();
@@ -67,7 +67,7 @@ async function submitForm() {
     Object.assign(form, blankForm());
     showForm.value = false;
   } catch (e) {
-    formError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+    formError.value = extractErrorMessage(e);
   } finally {
     submitting.value = false;
   }

@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { apiFetch } from '../lib/api';
+import { useDashboardStore } from './dashboard';
 
 export const useTransactionsStore = defineStore('transactions', () => {
   const items = ref([]);
@@ -15,6 +16,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
 
   async function create(payload) {
     const res = await apiFetch('/api/transactions', { method: 'POST', body: payload });
+    useDashboardStore().clearCache();
     return res.data;
   }
 
@@ -31,6 +33,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
   async function remove(id) {
     await apiFetch(`/api/transactions/${id}`, { method: 'DELETE' });
     items.value = items.value.filter((t) => t.id !== id);
+    useDashboardStore().clearCache();
   }
 
   return { items, fetch, create, toggleReconciled, remove };

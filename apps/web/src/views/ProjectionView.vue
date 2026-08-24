@@ -5,7 +5,7 @@ import { useSettingsStore } from '../stores/settings';
 import { eur, TODAY } from '../lib/format';
 import { useIsMobile } from '../lib/useIsMobile';
 import EditableAmount from '../components/EditableAmount.vue';
-import { ApiError } from '../lib/api';
+import { extractErrorMessage } from '../lib/api';
 
 const projectionStore = useProjectionStore();
 const settingsStore = useSettingsStore();
@@ -84,7 +84,7 @@ async function updateContribution(value) {
       await settingsStore.update({ monthlySavingsContribution: value });
       await projectionStore.fetch(horizon.value);
     } catch (e) {
-      settingsError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+      settingsError.value = extractErrorMessage(e);
     }
   });
 }
@@ -95,7 +95,7 @@ async function updateRate(value) {
       await settingsStore.update({ annualReturnRate: value });
       await projectionStore.fetch(horizon.value);
     } catch (e) {
-      settingsError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+      settingsError.value = extractErrorMessage(e);
     }
   });
 }

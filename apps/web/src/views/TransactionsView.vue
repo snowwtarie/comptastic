@@ -9,7 +9,7 @@ import { eur, fmtDateLabel, addMonthsISO, addStepISO, TODAY_ISO } from '../lib/f
 import { useIsMobile } from '../lib/useIsMobile';
 import Icon from '../components/Icon.vue';
 import ModalSheet from '../components/ModalSheet.vue';
-import { ApiError } from '../lib/api';
+import { extractErrorMessage } from '../lib/api';
 
 const transactionsStore = useTransactionsStore();
 const accountsStore = useAccountsStore();
@@ -154,7 +154,7 @@ async function submitForm() {
     Object.assign(form, blankForm());
     showForm.value = false;
   } catch (e) {
-    formError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+    formError.value = extractErrorMessage(e);
   } finally {
     submitting.value = false;
   }
@@ -329,7 +329,6 @@ async function toggleReconciled(id) {
           <option value="current">Ce mois</option>
           <option value="previous">Mois dernier</option>
           <option value="year">Cette année</option>
-          <option value="custom">Personnalisé</option>
         </select>
         <button type="button" class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2.5 text-sm font-semibold cursor-pointer" @click="openForm">
           <Icon name="plus" :stroke-width="2" />Nouvelle transaction

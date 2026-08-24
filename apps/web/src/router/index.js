@@ -32,7 +32,7 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
-  if (auth.status === 'idle') {
+  if (auth.status !== 'ready') {
     await auth.boot();
   }
   if (to.name !== 'login' && !auth.user) {

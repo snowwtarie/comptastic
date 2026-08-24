@@ -5,7 +5,7 @@ import { useSettingsStore } from '../stores/settings';
 import { eur, TODAY } from '../lib/format';
 import { useIsMobile } from '../lib/useIsMobile';
 import EditableAmount from '../components/EditableAmount.vue';
-import { ApiError } from '../lib/api';
+import { extractErrorMessage } from '../lib/api';
 
 const budgetsStore = useBudgetsStore();
 const settingsStore = useSettingsStore();
@@ -53,7 +53,7 @@ async function updateBudget(categoryId, value) {
   try {
     await budgetsStore.update(categoryId, value);
   } catch (e) {
-    rowError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+    rowError.value = extractErrorMessage(e);
   }
 }
 
@@ -89,7 +89,7 @@ async function updateIncome(value) {
   try {
     await settingsStore.update({ income: value });
   } catch (e) {
-    rowError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+    rowError.value = extractErrorMessage(e);
   }
 }
 </script>

@@ -240,7 +240,6 @@ const mobileSummary = computed(() => {
         <option value="current">Ce mois</option>
         <option value="previous">Mois dernier</option>
         <option value="year">Cette année</option>
-        <option value="custom">Personnalisé</option>
       </select>
     </div>
 

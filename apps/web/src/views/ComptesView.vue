@@ -5,7 +5,7 @@ import { eur } from '../lib/format';
 import { useIsMobile } from '../lib/useIsMobile';
 import Icon from '../components/Icon.vue';
 import ModalSheet from '../components/ModalSheet.vue';
-import { ApiError } from '../lib/api';
+import { extractErrorMessage } from '../lib/api';
 
 const accountsStore = useAccountsStore();
 const isMobile = useIsMobile();
@@ -60,7 +60,7 @@ async function submitForm() {
     Object.assign(form, blankForm());
     showForm.value = false;
   } catch (e) {
-    formError.value = e instanceof ApiError ? (e.errors ? Object.values(e.errors).flat()[0] : e.message) : 'Une erreur est survenue.';
+    formError.value = extractErrorMessage(e);
   } finally {
     submitting.value = false;
   }

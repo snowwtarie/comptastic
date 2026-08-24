@@ -1,23 +1,29 @@
 // apps/web/src/stores/auth.js
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { apiFetch } from '../lib/api';
+import { apiFetch, resetCsrf } from '../lib/api';
 import { useDashboardStore } from './dashboard';
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null); // { id, name, email } | null
   const status = ref('idle'); // 'idle' | 'loading' | 'ready'
+  let bootPromise = null;
 
-  async function boot() {
-    if (status.value !== 'idle') return;
+  function boot() {
+    if (status.value === 'ready') return Promise.resolve();
+    if (bootPromise) return bootPromise;
     status.value = 'loading';
-    try {
-      const res = await apiFetch('/api/user');
-      user.value = res.data;
-    } catch {
-      user.value = null;
-    }
-    status.value = 'ready';
+    bootPromise = (async () => {
+      try {
+        const res = await apiFetch('/api/user');
+        user.value = res.data;
+      } catch {
+        user.value = null;
+      }
+      status.value = 'ready';
+      bootPromise = null;
+    })();
+    return bootPromise;
   }
 
   async function login(email, password) {
@@ -38,6 +44,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function clear() {
     user.value = null;
+    resetCsrf();
     useDashboardStore().clearCache();
   }
 

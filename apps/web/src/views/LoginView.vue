@@ -3,7 +3,7 @@ import { reactive, ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useIsMobile } from '../lib/useIsMobile';
 import { useAuthStore } from '../stores/auth';
-import { ApiError } from '../lib/api';
+import { extractErrorMessage } from '../lib/api';
 
 const router = useRouter();
 const isMobile = useIsMobile();
@@ -63,11 +63,7 @@ async function submit() {
     }
     router.push('/dashboard');
   } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.errors ? Object.values(e.errors).flat()[0] : e.message;
-    } else {
-      error.value = 'Une erreur est survenue.';
-    }
+    error.value = extractErrorMessage(e);
   } finally {
     submitting.value = false;
   }
