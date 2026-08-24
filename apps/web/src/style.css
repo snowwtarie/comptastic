@@ -16,9 +16,9 @@
 }
 
 .only-mobile { display: none; }
-.only-desktop { display: initial; }
+.only-desktop { display: flex; }
 
 @media (max-width: 720px) {
-  .only-mobile { display: initial; }
+  .only-mobile { display: flex; }
   .only-desktop { display: none; }
 }
