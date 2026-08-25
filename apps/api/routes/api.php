@@ -22,6 +22,8 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:6,
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
+    Route::patch('/profile', [AuthController::class, 'updateProfile']);
+    Route::put('/password', [AuthController::class, 'updatePassword']);
 
     Route::get('/categories', [CategoryController::class, 'index']);
 

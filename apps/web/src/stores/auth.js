@@ -37,6 +37,18 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = res.data;
   }
 
+  async function updateProfile({ name, email }) {
+    const res = await apiFetch('/api/profile', { method: 'PATCH', body: { name, email } });
+    user.value = res.data;
+  }
+
+  async function updatePassword({ currentPassword, password, passwordConfirmation }) {
+    await apiFetch('/api/password', {
+      method: 'PUT',
+      body: { current_password: currentPassword, password, password_confirmation: passwordConfirmation },
+    });
+  }
+
   async function logout() {
     await apiFetch('/api/logout', { method: 'POST' });
     clear();
@@ -48,5 +60,5 @@ export const useAuthStore = defineStore('auth', () => {
     useDashboardStore().clearCache();
   }
 
-  return { user, status, boot, login, register, logout, clear };
+  return { user, status, boot, login, register, updateProfile, updatePassword, logout, clear };
 });

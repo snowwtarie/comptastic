@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/comptes', icon: 'wallet', label: 'Comptes', mobileLabel: 'Comptes' },
   { to: '/dettes', icon: 'debt', label: 'Dettes', desktopOnly: true },
   { to: '/projection', icon: 'projection', label: 'Projection', mobileLabel: 'Projet.' },
+  { to: '/profil', icon: 'user', label: 'Profil', desktopOnly: true },
 ];
 const mobileItems = NAV_ITEMS.filter((i) => !i.desktopOnly);
 

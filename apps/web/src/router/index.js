@@ -7,6 +7,7 @@ import BudgetsView from '../views/BudgetsView.vue';
 import ComptesView from '../views/ComptesView.vue';
 import DettesView from '../views/DettesView.vue';
 import ProjectionView from '../views/ProjectionView.vue';
+import ProfileView from '../views/ProfileView.vue';
 import { useAuthStore } from '../stores/auth';
 
 const router = createRouter({
@@ -24,6 +25,7 @@ const router = createRouter({
         { path: 'comptes', name: 'comptes', component: ComptesView },
         { path: 'dettes', name: 'dettes', component: DettesView },
         { path: 'projection', name: 'projection', component: ProjectionView },
+        { path: 'profil', name: 'profile', component: ProfileView },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/login' },

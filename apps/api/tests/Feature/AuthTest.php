@@ -113,4 +113,59 @@ class AuthTest extends TestCase
         $response->assertOk();
         $this->assertSame($user->email, $response->json('data.email'));
     }
+
+    public function test_it_updates_the_authenticated_users_profile(): void
+    {
+        $user = User::factory()->create(['name' => 'Old Name', 'email' => 'old@example.com']);
+
+        $response = $this->actingAs($user)->patchJson('/api/profile', [
+            'name' => 'New Name',
+            'email' => 'new@example.com',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('New Name', $response->json('data.name'));
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'name' => 'New Name', 'email' => 'new@example.com']);
+    }
+
+    public function test_it_rejects_a_profile_email_already_used_by_another_user(): void
+    {
+        $user = User::factory()->create();
+        User::factory()->create(['email' => 'taken@example.com']);
+
+        $response = $this->actingAs($user)->patchJson('/api/profile', [
+            'name' => $user->name,
+            'email' => 'taken@example.com',
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_it_updates_the_password_when_current_password_is_correct(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('old-password')]);
+
+        $response = $this->actingAs($user)->putJson('/api/password', [
+            'current_password' => 'old-password',
+            'password' => 'new-password123',
+            'password_confirmation' => 'new-password123',
+        ]);
+
+        $response->assertNoContent();
+        $this->assertTrue(Hash::check('new-password123', $user->fresh()->password));
+    }
+
+    public function test_it_rejects_a_password_change_with_the_wrong_current_password(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('old-password')]);
+
+        $response = $this->actingAs($user)->putJson('/api/password', [
+            'current_password' => 'wrong-password',
+            'password' => 'new-password123',
+            'password_confirmation' => 'new-password123',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertTrue(Hash::check('old-password', $user->fresh()->password));
+    }
 }
