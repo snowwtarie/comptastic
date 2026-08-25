@@ -11,6 +11,7 @@ const PATHS = {
   check: '<path d="M4 12l5 5L20 6"/>',
   edit: '<path d="M4 20h4l10-10-4-4L4 16v4Z"/>',
   chevron: '<path d="M6 9l6 6 6-6"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
 };
 
 defineProps({

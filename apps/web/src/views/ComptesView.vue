@@ -10,6 +10,7 @@ import { extractErrorMessage } from '../lib/api';
 const accountsStore = useAccountsStore();
 const isMobile = useIsMobile();
 const loadError = ref('');
+const deleteError = ref('');
 
 onMounted(async () => {
   try {
@@ -20,12 +21,15 @@ onMounted(async () => {
 });
 
 const showForm = ref(false);
+const editingId = ref(null);
 const formError = ref('');
 const submitting = ref(false);
 function blankForm() {
   return { name: '', bank: '', type: 'checking', openingBalance: '' };
 }
 const form = reactive(blankForm());
+const formTitle = computed(() => (editingId.value ? 'Modifier le compte' : 'Nouveau compte'));
+const submitLabel = computed(() => (editingId.value ? 'Enregistrer' : 'Ajouter'));
 
 const accounts = computed(() =>
   accountsStore.items.map((a) => ({
@@ -40,7 +44,15 @@ const accounts = computed(() =>
 const totalBalance = computed(() => accounts.value.reduce((s, a) => s + a.balance, 0));
 
 function openForm() {
+  editingId.value = null;
   formError.value = '';
+  Object.assign(form, blankForm());
+  showForm.value = true;
+}
+function openEditForm(acc) {
+  editingId.value = acc.id;
+  formError.value = '';
+  Object.assign(form, { name: acc.name, bank: acc.bank || '', type: acc.type, openingBalance: acc.opening_balance });
   showForm.value = true;
 }
 function closeForm() {
@@ -51,18 +63,33 @@ async function submitForm() {
   formError.value = '';
   submitting.value = true;
   try {
-    await accountsStore.create({
+    const payload = {
       name: form.name,
       bank: form.bank,
       type: form.type,
       openingBalance: Number(form.openingBalance) || 0,
-    });
+    };
+    if (editingId.value) {
+      await accountsStore.update(editingId.value, payload);
+    } else {
+      await accountsStore.create(payload);
+    }
     Object.assign(form, blankForm());
     showForm.value = false;
   } catch (e) {
     formError.value = extractErrorMessage(e);
   } finally {
     submitting.value = false;
+  }
+}
+
+async function removeAccount(id) {
+  if (!window.confirm('Supprimer ce compte ?')) return;
+  deleteError.value = '';
+  try {
+    await accountsStore.remove(id);
+  } catch (e) {
+    deleteError.value = extractErrorMessage(e);
   }
 }
 </script>
@@ -79,6 +106,7 @@ async function submitForm() {
 
     <main class="flex-1 overflow-y-auto px-4 pt-3.5 pb-6">
       <div v-if="loadError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ loadError }}</div>
+      <div v-if="deleteError" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">{{ deleteError }}</div>
 
       <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 mb-3.5">
         <div class="text-xs text-slate-500 mb-1">Solde total</div>
@@ -94,15 +122,23 @@ async function submitForm() {
             </div>
             <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700 whitespace-nowrap">{{ acc.typeLabel }}</span>
           </div>
-          <div class="flex items-baseline gap-1.5 flex-wrap">
+          <div class="flex items-baseline gap-1.5 flex-wrap mb-2">
             <div class="text-lg font-extrabold">{{ acc.balanceLabel }}</div>
             <div v-if="acc.hasPending" class="text-[11px] text-slate-400">({{ acc.pendingLabel }})</div>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" class="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 cursor-pointer" @click="openEditForm(acc)">
+              <Icon name="edit" :size="11" />Modifier
+            </button>
+            <button type="button" class="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 cursor-pointer" @click="removeAccount(acc.id)">
+              <Icon name="trash" :size="11" />Supprimer
+            </button>
           </div>
         </div>
       </div>
     </main>
 
-    <ModalSheet v-if="showForm" mobile title="Nouveau compte" @close="closeForm">
+    <ModalSheet v-if="showForm" mobile :title="formTitle" @close="closeForm">
       <div class="grid gap-3 mb-3.5">
         <input v-model="form.name" type="text" placeholder="Nom du compte" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px]" />
         <input v-model="form.bank" type="text" placeholder="Banque" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px]" />
@@ -116,7 +152,7 @@ async function submitForm() {
         {{ formError }}
       </div>
       <div class="flex gap-2.5">
-        <button type="button" :disabled="submitting" class="flex-1 bg-indigo-600 text-white rounded-[10px] py-3.5 text-sm font-bold cursor-pointer disabled:opacity-60" @click="submitForm">Ajouter</button>
+        <button type="button" :disabled="submitting" class="flex-1 bg-indigo-600 text-white rounded-[10px] py-3.5 text-sm font-bold cursor-pointer disabled:opacity-60" @click="submitForm">{{ submitLabel }}</button>
         <button type="button" class="flex-1 bg-slate-100 text-slate-600 rounded-[10px] py-3.5 text-sm font-bold cursor-pointer" @click="closeForm">Annuler</button>
       </div>
     </ModalSheet>
@@ -133,6 +169,7 @@ async function submitForm() {
     <p class="mt-0 mb-7 text-sm text-slate-500">Soldes calculés à partir des opérations pointées, encours non pointé indiqué entre parenthèses.</p>
 
     <div v-if="loadError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ loadError }}</div>
+    <div v-if="deleteError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ deleteError }}</div>
 
     <div class="flex items-baseline gap-6 flex-wrap bg-white border border-slate-200 rounded-2xl shadow-sm px-7 py-6 mb-7">
       <div>
@@ -142,7 +179,7 @@ async function submitForm() {
       <div class="text-[13px] text-slate-500">sur {{ accounts.length }} comptes</div>
     </div>
 
-    <ModalSheet v-if="showForm" title="Nouveau compte" max-width="480px" @close="closeForm">
+    <ModalSheet v-if="showForm" :title="formTitle" max-width="480px" @close="closeForm">
       <div class="grid gap-4 mb-5">
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1.5">Nom du compte</label>
@@ -171,7 +208,7 @@ async function submitForm() {
       </div>
       <div class="flex gap-3">
         <button type="button" :disabled="submitting" class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-60" @click="submitForm">
-          <Icon name="plus" :stroke-width="2" />Ajouter
+          <Icon name="plus" :stroke-width="2" />{{ submitLabel }}
         </button>
         <button type="button" class="inline-flex items-center gap-1.5 bg-transparent text-slate-600 border border-slate-200 rounded-lg px-4.5 py-2.5 text-sm font-semibold cursor-pointer hover:bg-slate-50" @click="closeForm">
           <Icon name="close" :stroke-width="2" />Annuler
@@ -194,6 +231,14 @@ async function submitForm() {
             <div v-if="acc.hasPending" class="text-[13px] text-slate-400">({{ acc.pendingLabel }})</div>
           </div>
           <div v-if="acc.ibanLabel" class="text-xs text-slate-400">{{ acc.ibanLabel }}</div>
+        </div>
+        <div class="flex gap-3 pt-1 border-t border-slate-100 mt-1 pt-2.5">
+          <button type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 cursor-pointer hover:text-slate-900" @click="openEditForm(acc)">
+            <Icon name="edit" :size="12" />Modifier
+          </button>
+          <button type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-red-600 cursor-pointer hover:text-red-700" @click="removeAccount(acc.id)">
+            <Icon name="trash" :size="12" />Supprimer
+          </button>
         </div>
       </div>
     </section>

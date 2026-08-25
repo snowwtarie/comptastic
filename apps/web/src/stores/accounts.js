@@ -26,5 +26,20 @@ export const useAccountsStore = defineStore('accounts', () => {
     return res.data;
   }
 
-  return { items, byId, savings, loaded, fetch, create };
+  async function update(id, { name, bank, type, openingBalance }) {
+    const res = await apiFetch(`/api/accounts/${id}`, {
+      method: 'PATCH',
+      body: { name, bank: bank || null, type, opening_balance: openingBalance },
+    });
+    const idx = items.value.findIndex((a) => a.id === id);
+    if (idx !== -1) items.value[idx] = res.data;
+    return res.data;
+  }
+
+  async function remove(id) {
+    await apiFetch(`/api/accounts/${id}`, { method: 'DELETE' });
+    items.value = items.value.filter((a) => a.id !== id);
+  }
+
+  return { items, byId, savings, loaded, fetch, create, update, remove };
 });

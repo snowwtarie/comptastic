@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\Category;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -52,5 +54,69 @@ class AccountTest extends TestCase
             'name' => 'Livret A',
             'user_id' => $user->id,
         ]);
+    }
+
+    public function test_it_updates_an_account_and_recomputes_its_balance(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->create([
+            'user_id' => $user->id,
+            'opening_balance_cents' => 5000,
+        ]);
+
+        $response = $this->actingAs($user)->patchJson("/api/accounts/{$account->id}", [
+            'name' => 'Compte renommé',
+            'bank' => 'Nouvelle banque',
+            'type' => 'checking',
+            'opening_balance' => 100,
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('Compte renommé', $response->json('data.name'));
+        $this->assertEquals(100.0, $response->json('data.balance'));
+        $this->assertDatabaseHas('accounts', ['id' => $account->id, 'name' => 'Compte renommé']);
+    }
+
+    public function test_it_returns_404_when_another_user_tries_to_update_an_account(): void
+    {
+        $owner = User::factory()->create();
+        $intruder = User::factory()->create();
+        $account = Account::factory()->create(['user_id' => $owner->id]);
+
+        $response = $this->actingAs($intruder)->patchJson("/api/accounts/{$account->id}", [
+            'name' => 'Hacked',
+            'type' => 'checking',
+            'opening_balance' => 0,
+        ]);
+
+        $response->assertNotFound();
+    }
+
+    public function test_it_deletes_an_account_with_no_transactions(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->create(['user_id' => $user->id]);
+
+        $response = $this->actingAs($user)->deleteJson("/api/accounts/{$account->id}");
+
+        $response->assertNoContent();
+        $this->assertNull(Account::find($account->id));
+    }
+
+    public function test_it_refuses_to_delete_an_account_that_has_transactions(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->create(['user_id' => $user->id]);
+        $category = Category::factory()->create();
+        Transaction::factory()->create([
+            'user_id' => $user->id,
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+        ]);
+
+        $response = $this->actingAs($user)->deleteJson("/api/accounts/{$account->id}");
+
+        $response->assertUnprocessable();
+        $this->assertNotNull(Account::find($account->id));
     }
 }
