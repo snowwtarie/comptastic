@@ -96,7 +96,7 @@ async function submit() {
 
         <h1 class="m-0 mb-4 text-[17px] font-bold tracking-tight">{{ title }}</h1>
 
-        <div class="grid gap-3 mb-2">
+        <div class="grid gap-3 mb-4">
           <input
             v-if="isSignup"
             type="text"
@@ -124,11 +124,6 @@ async function submit() {
             class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-[10px]"
           />
         </div>
-
-        <div v-if="isLogin" class="flex justify-end mb-4">
-          <a href="#" class="text-xs font-semibold text-indigo-600">Mot de passe oublié ?</a>
-        </div>
-        <div v-else class="mb-4"></div>
 
         <div v-if="error" class="bg-red-50 text-red-700 text-xs font-semibold rounded-lg px-2.5 py-2 mb-3.5">
           {{ error }}
@@ -174,7 +169,7 @@ async function submit() {
 
         <h1 class="m-0 mb-5 text-xl font-bold tracking-tight">{{ title }}</h1>
 
-        <div class="grid gap-4 mb-2">
+        <div class="grid gap-4 mb-5">
           <div v-if="isSignup">
             <label class="block text-xs font-semibold text-slate-600 mb-1.5">Nom complet</label>
             <input type="text" v-model="form.name" placeholder="Jeanne Martin" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg" />
@@ -192,11 +187,6 @@ async function submit() {
             <input type="password" v-model="form.confirmPassword" placeholder="••••••••" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-lg" />
           </div>
         </div>
-
-        <div v-if="isLogin" class="flex justify-end mb-5">
-          <a href="#" class="text-[13px] font-semibold">Mot de passe oublié ?</a>
-        </div>
-        <div v-else class="mb-5"></div>
 
         <div v-if="error" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">
           {{ error }}
