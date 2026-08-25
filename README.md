@@ -6,7 +6,7 @@ L'application a été implémentée à partir de maquettes HTML/CSS/JS exportée
 
 ## Fonctionnalités
 
-- **Connexion / inscription** — écran unique avec bascule entre les deux modes (authentification factice pour le moment, pas de backend branché).
+- **Connexion / inscription** — écran unique avec bascule entre les deux modes, authentifié via l'API Laravel (sessions Sanctum).
 - **Tableau de bord** — solde total, tendance, graphique dépenses/recettes, répartition des dépenses par catégorie, aperçu des comptes.
 - **Transactions** — liste filtrable par compte et par période, pointage ligne par ligne, solde théorique après opération, saisie de paiements échelonnés (N fois) ou de transactions récurrentes (loyer, abonnements...), affectation à une dette ou à une épargne.
 - **Budgets** — enveloppe mensuelle éditable par catégorie avec barre de consommation en direct, répartition du revenu mensuel entre catégories budgétées et épargne possible.
@@ -41,10 +41,35 @@ Le backend API (Laravel) est décrit dans [`docs/backend-spec.md`](docs/backend-
 
 ## Démarrage
 
+Le front-end appelle une vraie API — les deux doivent tourner en parallèle.
+
+**Backend** (`apps/api`) :
+
+```sh
+cd apps/api
+composer install
+cp .env.example .env   # configure DB_* pour PostgreSQL, puis :
+php artisan key:generate
+php artisan migrate --seed
+php artisan serve --port=8000
+```
+
+**Front-end** (`apps/web`) :
+
 ```sh
 cd apps/web
+cp .env.example .env   # définit VITE_API_BASE_URL (http://localhost:8000 par défaut)
 bun install
 bun run dev
+```
+
+`apps/web/.env` n'est pas versionné : sans cette copie, `VITE_API_BASE_URL` vaut `undefined` et tous les appels API échouent silencieusement (404 sur `/undefined/api/...`).
+
+## Tests
+
+```sh
+cd apps/api && php artisan test    # suite Pest
+cd apps/web && bun run test        # suite Vitest (stores Pinia)
 ```
 
 ## Build de production
