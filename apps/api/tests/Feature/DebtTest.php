@@ -69,4 +69,27 @@ class DebtTest extends TestCase
 
         $response->assertNotFound();
     }
+
+    public function test_it_deletes_a_debt(): void
+    {
+        $user = User::factory()->create();
+        $debt = Debt::factory()->create(['user_id' => $user->id]);
+
+        $response = $this->actingAs($user)->deleteJson("/api/debts/{$debt->id}");
+
+        $response->assertNoContent();
+        $this->assertNull(Debt::find($debt->id));
+    }
+
+    public function test_it_returns_404_when_another_user_tries_to_delete_a_debt(): void
+    {
+        $owner = User::factory()->create();
+        $intruder = User::factory()->create();
+        $debt = Debt::factory()->create(['user_id' => $owner->id]);
+
+        $response = $this->actingAs($intruder)->deleteJson("/api/debts/{$debt->id}");
+
+        $response->assertNotFound();
+        $this->assertDatabaseHas('debts', ['id' => $debt->id]);
+    }
 }

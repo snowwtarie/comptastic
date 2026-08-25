@@ -38,6 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/debts', [DebtController::class, 'index']);
     Route::post('/debts', [DebtController::class, 'store']);
     Route::patch('/debts/{debt}', [DebtController::class, 'update']);
+    Route::delete('/debts/{debt}', [DebtController::class, 'destroy']);
 
     Route::get('/budgets', [BudgetController::class, 'index']);
     Route::put('/budgets/{category}', [BudgetController::class, 'update']);

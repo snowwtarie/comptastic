@@ -46,5 +46,10 @@ export const useDebtsStore = defineStore('debts', () => {
     if (idx !== -1) items.value[idx] = res.data;
   }
 
-  return { items, byId, fetch, create, update };
+  async function remove(id) {
+    await apiFetch(`/api/debts/${id}`, { method: 'DELETE' });
+    items.value = items.value.filter((d) => d.id !== id);
+  }
+
+  return { items, byId, fetch, create, update, remove };
 });

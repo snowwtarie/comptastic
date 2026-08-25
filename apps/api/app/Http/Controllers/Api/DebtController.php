@@ -29,4 +29,11 @@ class DebtController extends Controller
 
         return new DebtResource($debt);
     }
+
+    public function destroy(Debt $debt)
+    {
+        $debt->delete();
+
+        return response()->noContent();
+    }
 }

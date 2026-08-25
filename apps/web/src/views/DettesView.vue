@@ -23,6 +23,16 @@ async function updateRemaining(id, value) {
   }
 }
 
+async function removeDebt(id) {
+  if (!window.confirm('Supprimer cette dette ?')) return;
+  rowError.value = '';
+  try {
+    await debtsStore.remove(id);
+  } catch (e) {
+    rowError.value = extractErrorMessage(e);
+  }
+}
+
 onMounted(async () => {
   try {
     await debtsStore.fetch();
@@ -177,9 +187,14 @@ async function submitForm() {
         <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mb-2">
           <div class="h-full rounded-full bg-indigo-600" :style="{ width: d.progressPct + '%' }"></div>
         </div>
-        <div class="flex justify-between text-[13px] text-slate-500">
+        <div class="flex justify-between text-[13px] text-slate-500 mb-2.5">
           <span>{{ d.progressLabel }} remboursés</span>
           <span>{{ d.monthsLeftLabel }}</span>
+        </div>
+        <div class="flex gap-3 pt-2.5 border-t border-slate-100">
+          <button type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-red-600 cursor-pointer hover:text-red-700" @click="removeDebt(d.id)">
+            <Icon name="trash" :size="12" />Supprimer
+          </button>
         </div>
       </div>
     </section>
