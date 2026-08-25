@@ -168,6 +168,16 @@ async function toggleReconciled(id) {
     listError.value = 'Impossible de mettre à jour la transaction.';
   }
 }
+
+async function removeTransaction(id) {
+  if (!window.confirm('Supprimer cette transaction ?')) return;
+  listError.value = '';
+  try {
+    await transactionsStore.remove(id);
+  } catch {
+    listError.value = 'Impossible de supprimer la transaction.';
+  }
+}
 </script>
 
 <template>
@@ -209,12 +219,22 @@ async function toggleReconciled(id) {
               <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700">{{ t.categoryName }}</span>
               <span v-if="t.hasLink" :title="t.linkTitle" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-yellow-100 text-yellow-800">{{ t.linkLabel }}</span>
             </div>
-            <button
-              type="button"
-              class="w-6 h-6 rounded-[7px] border-[1.5px] text-white text-[13px] font-bold flex items-center justify-center cursor-pointer"
-              :class="t.reconciled ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300 bg-white'"
-              @click="toggleReconciled(t.id)"
-            >{{ t.reconciled ? '✓' : '' }}</button>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="w-6 h-6 rounded-[7px] border-[1.5px] text-white text-[13px] font-bold flex items-center justify-center cursor-pointer"
+                :class="t.reconciled ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300 bg-white'"
+                @click="toggleReconciled(t.id)"
+              >{{ t.reconciled ? '✓' : '' }}</button>
+              <button
+                type="button"
+                class="w-6 h-6 rounded-[7px] flex items-center justify-center cursor-pointer text-slate-400 hover:text-red-600 hover:bg-red-50"
+                aria-label="Supprimer"
+                @click="removeTransaction(t.id)"
+              >
+                <Icon name="trash" :size="14" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -476,7 +496,7 @@ async function toggleReconciled(id) {
     </ModalSheet>
 
     <section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-      <div class="grid gap-3 px-6 py-3 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold tracking-wide uppercase text-slate-400" style="grid-template-columns: 40px 100px 2fr 1fr 1.3fr 110px 130px;">
+      <div class="grid gap-3 px-6 py-3 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold tracking-wide uppercase text-slate-400" style="grid-template-columns: 40px 100px 2fr 1fr 1.3fr 110px 130px 32px;">
         <span></span>
         <span>Date</span>
         <span>Libellé</span>
@@ -484,12 +504,13 @@ async function toggleReconciled(id) {
         <span>Compte</span>
         <span class="text-right">Montant</span>
         <span class="text-right">Solde après op.</span>
+        <span></span>
       </div>
       <div
         v-for="t in transactions"
         :key="t.id"
         class="grid gap-3 px-6 py-3.5 border-b border-slate-100 items-center"
-        style="grid-template-columns: 40px 100px 2fr 1fr 1.3fr 110px 130px;"
+        style="grid-template-columns: 40px 100px 2fr 1fr 1.3fr 110px 130px 32px;"
       >
         <button
           type="button"
@@ -507,6 +528,14 @@ async function toggleReconciled(id) {
         <span class="text-[13px] text-slate-500">{{ t.accountName }}</span>
         <span class="text-right text-sm font-bold" :class="t.amountColor">{{ t.amountLabel }}</span>
         <span class="text-right text-[13px] text-slate-500">{{ t.runningBalanceLabel }}</span>
+        <button
+          type="button"
+          class="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer text-slate-400 hover:text-red-600 hover:bg-red-50 justify-self-end"
+          aria-label="Supprimer"
+          @click="removeTransaction(t.id)"
+        >
+          <Icon name="trash" :size="14" />
+        </button>
       </div>
     </section>
   </main>
