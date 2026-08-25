@@ -91,6 +91,16 @@ class TransactionController extends Controller
         return response()->noContent();
     }
 
+    public function destroySeries(Request $request, string $seriesId)
+    {
+        $request->user()->transactions()
+            ->where('series_id', $seriesId)
+            ->where('reconciled', false)
+            ->delete();
+
+        return response()->noContent();
+    }
+
     private function periodRange(string $period): array
     {
         $now = now();

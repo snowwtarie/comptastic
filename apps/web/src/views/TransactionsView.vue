@@ -25,6 +25,8 @@ const formError = ref('');
 const submitting = ref(false);
 const loadError = ref('');
 const listError = ref('');
+const loadingMore = ref(false);
+const hasMore = computed(() => transactionsStore.currentPage < transactionsStore.lastPage);
 
 async function loadTransactions() {
   try {
@@ -34,6 +36,17 @@ async function loadTransactions() {
     });
   } catch {
     loadError.value = 'Impossible de charger les transactions.';
+  }
+}
+
+async function loadMoreTransactions() {
+  loadingMore.value = true;
+  try {
+    await transactionsStore.loadMore();
+  } catch {
+    listError.value = 'Impossible de charger plus de transactions.';
+  } finally {
+    loadingMore.value = false;
   }
 }
 
@@ -115,6 +128,7 @@ const transactions = computed(() =>
     hasLink: t.link_type === 'debt' || t.link_type === 'savings',
     linkLabel: t.link_type === 'debt' ? `Dette · ${debtsStore.byId[t.linked_debt_id]?.name ?? ''}` : t.link_type === 'savings' ? 'Épargne' : '',
     linkTitle: t.link_type === 'savings' ? `Vers ${accountsStore.byId[t.linked_savings_account_id]?.name ?? ''}` : '',
+    isCancelableSeries: t.series_id !== null && !t.reconciled,
   }))
 );
 
@@ -178,6 +192,16 @@ async function removeTransaction(id) {
     listError.value = 'Impossible de supprimer la transaction.';
   }
 }
+
+async function cancelSeries(seriesId) {
+  if (!window.confirm('Annuler les échéances restantes de cette série ?')) return;
+  listError.value = '';
+  try {
+    await transactionsStore.cancelSeries(seriesId);
+  } catch (e) {
+    listError.value = extractErrorMessage(e);
+  }
+}
 </script>
 
 <template>
@@ -227,6 +251,16 @@ async function removeTransaction(id) {
                 @click="toggleReconciled(t.id)"
               >{{ t.reconciled ? '✓' : '' }}</button>
               <button
+                v-if="t.isCancelableSeries"
+                type="button"
+                class="w-6 h-6 rounded-[7px] flex items-center justify-center cursor-pointer text-slate-400 hover:text-amber-600 hover:bg-amber-50"
+                aria-label="Annuler les échéances restantes"
+                title="Annuler les échéances restantes"
+                @click="cancelSeries(t.series_id)"
+              >
+                <Icon name="close" :size="14" />
+              </button>
+              <button
                 type="button"
                 class="w-6 h-6 rounded-[7px] flex items-center justify-center cursor-pointer text-slate-400 hover:text-red-600 hover:bg-red-50"
                 aria-label="Supprimer"
@@ -238,6 +272,13 @@ async function removeTransaction(id) {
           </div>
         </div>
       </div>
+      <button
+        v-if="hasMore"
+        type="button"
+        :disabled="loadingMore"
+        class="w-full mt-3.5 bg-white border border-slate-200 rounded-xl py-3 text-[13px] font-semibold text-indigo-600 cursor-pointer disabled:opacity-60"
+        @click="loadMoreTransactions"
+      >{{ loadingMore ? 'Chargement...' : 'Charger plus' }}</button>
     </main>
 
     <ModalSheet v-if="showForm" mobile title="Nouvelle transaction" @close="closeForm">
@@ -496,7 +537,7 @@ async function removeTransaction(id) {
     </ModalSheet>
 
     <section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-      <div class="grid gap-3 px-6 py-3 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold tracking-wide uppercase text-slate-400" style="grid-template-columns: 40px 100px 2fr 1fr 1.3fr 110px 130px 32px;">
+      <div class="grid gap-3 px-6 py-3 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold tracking-wide uppercase text-slate-400" style="grid-template-columns: 40px 100px 2fr 1fr 1.3fr 110px 130px 60px;">
         <span></span>
         <span>Date</span>
         <span>Libellé</span>
@@ -510,7 +551,7 @@ async function removeTransaction(id) {
         v-for="t in transactions"
         :key="t.id"
         class="grid gap-3 px-6 py-3.5 border-b border-slate-100 items-center"
-        style="grid-template-columns: 40px 100px 2fr 1fr 1.3fr 110px 130px 32px;"
+        style="grid-template-columns: 40px 100px 2fr 1fr 1.3fr 110px 130px 60px;"
       >
         <button
           type="button"
@@ -528,15 +569,35 @@ async function removeTransaction(id) {
         <span class="text-[13px] text-slate-500">{{ t.accountName }}</span>
         <span class="text-right text-sm font-bold" :class="t.amountColor">{{ t.amountLabel }}</span>
         <span class="text-right text-[13px] text-slate-500">{{ t.runningBalanceLabel }}</span>
-        <button
-          type="button"
-          class="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer text-slate-400 hover:text-red-600 hover:bg-red-50 justify-self-end"
-          aria-label="Supprimer"
-          @click="removeTransaction(t.id)"
-        >
-          <Icon name="trash" :size="14" />
-        </button>
+        <div class="flex items-center gap-1 justify-self-end">
+          <button
+            v-if="t.isCancelableSeries"
+            type="button"
+            class="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer text-slate-400 hover:text-amber-600 hover:bg-amber-50"
+            aria-label="Annuler les échéances restantes"
+            title="Annuler les échéances restantes"
+            @click="cancelSeries(t.series_id)"
+          >
+            <Icon name="close" :size="14" />
+          </button>
+          <button
+            type="button"
+            class="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer text-slate-400 hover:text-red-600 hover:bg-red-50"
+            aria-label="Supprimer"
+            @click="removeTransaction(t.id)"
+          >
+            <Icon name="trash" :size="14" />
+          </button>
+        </div>
       </div>
     </section>
+    <div v-if="hasMore" class="flex justify-center mt-5">
+      <button
+        type="button"
+        :disabled="loadingMore"
+        class="bg-white border border-slate-200 rounded-lg px-5 py-2.5 text-sm font-semibold text-indigo-600 cursor-pointer hover:bg-slate-50 disabled:opacity-60"
+        @click="loadMoreTransactions"
+      >{{ loadingMore ? 'Chargement...' : 'Charger plus' }}</button>
+    </div>
   </main>
 </template>
