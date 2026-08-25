@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-comptastic}
+      POSTGRES_USER: ${DB_USERNAME:-comptastic}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-comptastic}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: apps/api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      APP_DEBUG: 'false'
+      APP_KEY: ${APP_KEY:?run "php artisan key:generate --show" and set APP_KEY in .env}
+      APP_URL: ${API_URL:-http://localhost:8000}
+      FRONTEND_URL: ${WEB_URL:-http://localhost:8080}
+      SESSION_DOMAIN: ${SESSION_DOMAIN:-localhost}
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost:8080}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-comptastic}
+      DB_USERNAME: ${DB_USERNAME:-comptastic}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      LOG_CHANNEL: stack
+    ports:
+      - '${API_PORT:-8000}:80'
+
+  web:
+    build:
+      context: apps/web
+      args:
+        VITE_API_BASE_URL: ${API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '${WEB_PORT:-8080}:80'
+
+volumes:
+  postgres-data:
