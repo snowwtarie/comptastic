@@ -28,5 +28,23 @@ export const useDebtsStore = defineStore('debts', () => {
     return res.data;
   }
 
-  return { items, byId, fetch, create };
+  async function update(id, { remainingAmount }) {
+    const current = items.value.find((d) => d.id === id);
+    if (!current) return;
+    const res = await apiFetch(`/api/debts/${id}`, {
+      method: 'PATCH',
+      body: {
+        name: current.name,
+        original_amount: current.original_amount,
+        remaining_amount: remainingAmount,
+        monthly_payment: current.monthly_payment,
+        rate: current.rate,
+        end_date: current.end_date,
+      },
+    });
+    const idx = items.value.findIndex((d) => d.id === id);
+    if (idx !== -1) items.value[idx] = res.data;
+  }
+
+  return { items, byId, fetch, create, update };
 });

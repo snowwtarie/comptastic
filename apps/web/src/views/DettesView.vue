@@ -4,6 +4,7 @@ import { useDebtsStore } from '../stores/debts';
 import { eur, fmtDateLabel } from '../lib/format';
 import Icon from '../components/Icon.vue';
 import ModalSheet from '../components/ModalSheet.vue';
+import EditableAmount from '../components/EditableAmount.vue';
 import { useIsMobile } from '../lib/useIsMobile';
 import { extractErrorMessage } from '../lib/api';
 
@@ -11,6 +12,16 @@ const debtsStore = useDebtsStore();
 const isMobile = useIsMobile();
 
 const loadError = ref('');
+const rowError = ref('');
+
+async function updateRemaining(id, value) {
+  rowError.value = '';
+  try {
+    await debtsStore.update(id, { remainingAmount: value });
+  } catch (e) {
+    rowError.value = extractErrorMessage(e);
+  }
+}
 
 onMounted(async () => {
   try {
@@ -85,6 +96,7 @@ async function submitForm() {
     <p class="mt-0 mb-7 text-sm text-slate-500">Suivez le remboursement de vos crédits, prêts et paiements échelonnés.</p>
 
     <div v-if="loadError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ loadError }}</div>
+    <div v-if="rowError" class="bg-red-50 text-red-700 text-[13px] font-semibold rounded-lg px-3 py-2.5 mb-4">{{ rowError }}</div>
 
     <div class="flex items-center gap-6 flex-wrap bg-white border border-slate-200 rounded-2xl shadow-sm px-7 py-6 mb-7">
       <div>
@@ -150,7 +162,15 @@ async function submitForm() {
             <div class="text-xs text-slate-400">Échéance {{ d.endDateLabel }} · Taux {{ d.rateLabel }} · Mensualité {{ d.monthlyLabel }}</div>
           </div>
           <div class="text-right">
-            <div class="text-[22px] font-extrabold tracking-tight">{{ d.remainingLabel }}</div>
+            <EditableAmount
+              :model-value="d.remaining_amount"
+              :display="d.remainingLabel"
+              suffix="€"
+              :step="10"
+              min="0"
+              value-class="text-[22px] font-extrabold tracking-tight"
+              @update:model-value="(v) => updateRemaining(d.id, v)"
+            />
             <div class="text-xs text-slate-400">restant sur {{ d.originalLabel }}</div>
           </div>
         </div>
